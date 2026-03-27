@@ -5,7 +5,7 @@ import React from "react";
 export const NavItemTree = ({disabled, checkedKeys, defaultExpandedKeys, onCheck}) => {
   const NavItemNodes = [
     {
-      title: i18next.t("organization:All"),
+      title: i18next.t("general:All"),
       key: "all",
       children: [
         {
@@ -32,9 +32,19 @@ export const NavItemTree = ({disabled, checkedKeys, defaultExpandedKeys, onCheck
           key: "/applications-top",
           children: [
             {title: i18next.t("general:Applications"), key: "/applications"},
-            {title: i18next.t("general:Providers"), key: "/providers"},
+            {title: i18next.t("application:Providers"), key: "/providers"},
             {title: i18next.t("general:Resources"), key: "/resources"},
             {title: i18next.t("general:Certs"), key: "/certs"},
+          ],
+        },
+        {
+          title: i18next.t("general:Gateway"),
+          key: "/sites-top",
+          children: [
+            {title: i18next.t("general:Certs"), key: "/certs"},
+            {title: i18next.t("general:Rules"), key: "/rules"},
+            {title: i18next.t("general:Sites"), key: "/sites"},
+            {title: i18next.t("general:MCP Servers"), key: "/servers"},
           ],
         },
         {

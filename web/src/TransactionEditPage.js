@@ -19,6 +19,7 @@ import * as ApplicationBackend from "./backend/ApplicationBackend";
 import * as UserBackend from "./backend/UserBackend";
 import * as Setting from "./Setting";
 import {Button, Card, Col, Input, InputNumber, Row, Select} from "antd";
+import PaginateSelect from "./common/PaginateSelect";
 import i18next from "i18next";
 
 const {Option} = Select;
@@ -43,7 +44,6 @@ class TransactionEditPage extends React.Component {
     if (this.state.mode === "recharge") {
       this.getOrganizations();
       this.getApplications(this.state.organizationName);
-      this.getUsers(this.state.organizationName);
     }
   }
 
@@ -96,19 +96,6 @@ class TransactionEditPage extends React.Component {
       .then((res) => {
         this.setState({
           applications: res.data || [],
-        });
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
-  }
-
-  getUsers(organizationName) {
-    const targetOrganizationName = organizationName || this.state.organizationName;
-    UserBackend.getUsers(targetOrganizationName)
-      .then((res) => {
-        this.setState({
-          users: res.data || [],
         });
       })
       .catch(error => {
@@ -205,7 +192,6 @@ class TransactionEditPage extends React.Component {
                   this.updateTransactionField("owner", value);
                   this.updateTransactionField("application", "");
                   this.getApplications(value);
-                  this.getUsers(value);
                 }}>
                 {
                   this.state.organizations.map((org, index) => <Option key={index} value={org.name}>{org.name}</Option>)
@@ -275,7 +261,7 @@ class TransactionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("provider:Category"), i18next.t("provider:Category - Tooltip"))} :
+            {Setting.getLabel(i18next.t("general:Category"), i18next.t("general:Category - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input disabled={true} value={this.state.transaction.category} />
@@ -283,7 +269,7 @@ class TransactionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("provider:Type"), i18next.t("payment:Type - Tooltip"))} :
+            {Setting.getLabel(i18next.t("general:Type"), i18next.t("general:Type - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input disabled={true} value={this.state.transaction.type} onChange={e => {
@@ -313,7 +299,7 @@ class TransactionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("transaction:Tag - Tooltip"))} :
+            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("product:Tag - Tooltip"))} :
           </Col>
           <Col span={22} >
             {isRechargeMode ? (
@@ -340,17 +326,24 @@ class TransactionEditPage extends React.Component {
           </Col>
           <Col span={22} >
             {isRechargeMode ? (
-              <Select virtual={false} style={{width: "100%"}}
+              <PaginateSelect
+                virtual
+                style={{width: "100%"}}
                 value={this.state.transaction.user}
                 disabled={this.state.transaction.tag === "Organization"}
                 allowClear
+                fetchPage={UserBackend.getUsers}
+                buildFetchArgs={({page, pageSize, searchText}) => {
+                  const field = searchText ? "name" : "";
+                  return [this.state.transaction?.organization || this.state.organizationName, page, pageSize, field, searchText];
+                }}
+                reloadKey={this.state.transaction?.organization || this.state.organizationName}
+                optionMapper={(user) => Setting.getOption(user.name, user.name)}
+                filterOption={false}
                 onChange={(value) => {
                   this.updateTransactionField("user", value || "");
-                }}>
-                {
-                  this.state.users.map((user, index) => <Option key={index} value={user.name}>{user.name}</Option>)
-                }
-              </Select>
+                }}
+              />
             ) : (
               <Input disabled={true} value={this.state.transaction.user} onChange={e => {
               }} />
@@ -359,7 +352,7 @@ class TransactionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("transaction:Amount"), i18next.t("transaction:Amount - Tooltip"))} :
+            {Setting.getLabel(i18next.t("product:Amount"), i18next.t("transaction:Amount - Tooltip"))} :
           </Col>
           <Col span={4} >
             <InputNumber disabled={!isRechargeMode} value={this.state.transaction.amount ?? 0} onChange={value => {
@@ -369,7 +362,7 @@ class TransactionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("currency:Currency"), i18next.t("currency:Currency - Tooltip"))} :
+            {Setting.getLabel(i18next.t("payment:Currency"), i18next.t("payment:Currency - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.transaction.currency} disabled={!isRechargeMode} onChange={(value => {

@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/beego/beego/v2/server/web/context"
-	"github.com/casdoor/casdoor/mcp"
+	"github.com/casdoor/casdoor/mcpself"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -31,7 +31,7 @@ func AutoSigninFilter(ctx *context.Context) {
 		return
 	}
 	if urlPath == "/api/mcp" {
-		var req mcp.McpRequest
+		var req mcpself.McpRequest
 		if err := json.Unmarshal(ctx.Input.RequestBody, &req); err == nil {
 			if req.Method == "initialize" || req.Method == "notifications/initialized" || req.Method == "ping" || req.Method == "tools/list" {
 				return
@@ -84,17 +84,6 @@ func AutoSigninFilter(ctx *context.Context) {
 		setSessionUser(ctx, userId)
 		setSessionOidc(ctx, token.Scope, application.ClientId)
 		return
-	}
-
-	accessKey := ctx.Input.Query("accessKey")
-	accessSecret := ctx.Input.Query("accessSecret")
-	if accessKey != "" && accessSecret != "" {
-		userId, err := getUsernameByKeys(ctx)
-		if err != nil {
-			responseError(ctx, err.Error())
-		}
-
-		setSessionUser(ctx, userId)
 	}
 
 	// "/page?clientId=123&clientSecret=456"

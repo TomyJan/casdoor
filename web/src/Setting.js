@@ -32,7 +32,10 @@ const {Option} = Select;
 
 export const ServerUrl = "";
 
-export const StaticBaseUrl = "https://cdn.casbin.org";
+export const StaticBaseUrl = Conf.StaticBaseUrl;
+
+export const MAX_PAGE_SIZE = 25;
+export const SEARCH_DEBOUNCE_MS = 300;
 
 export const Countries = [
   {label: "English", key: "en", country: "US", alt: "English"},
@@ -179,6 +182,10 @@ export const OtherProviderInfo = {
       logo: `${StaticBaseUrl}/img/social_default.png`,
       url: "https://casdoor.org/docs/provider/email/overview",
     },
+    "Resend": {
+      logo: `${StaticBaseUrl}/img/email_resend.png`,
+      url: "https://resend.com/",
+    },
   },
   Storage: {
     "Local File System": {
@@ -286,11 +293,11 @@ export const OtherProviderInfo = {
       url: "https://fastspring.com/",
     },
     "Lemon Squeezy": {
-      logo: `${StaticBaseUrl}/img/payment_lemonsqueezy.png`,
+      logo: `${StaticBaseUrl}/img/payment_lemonsqueezy.jpg`,
       url: "https://www.lemonsqueezy.com/",
     },
     "Adyen": {
-      logo: `${StaticBaseUrl}/img/payment_adyen.png`,
+      logo: `${StaticBaseUrl}/img/payment_adyen.svg`,
       url: "https://www.adyen.com/",
     },
   },
@@ -454,8 +461,8 @@ export const UserFields = ["owner", "name", "password", "display_name", "id", "t
   "is_admin", "homepage", "birthday", "gender", "password_type", "password_salt", "external_id", "avatar", "first_name", "last_name",
   "avatar_type", "permanent_avatar", "email_verified", "region", "location", "address",
   "affiliation", "title", "id_card_type", "id_card", "real_name", "is_verified", "bio", "tag", "language",
-  "education", "score", "karma", "ranking", "balance", "currency", "is_default_avatar", "is_online",
-  "is_forbidden", "is_deleted", "signup_application", "hash", "pre_hash", "access_key", "access_secret", "access_token",
+  "education", "score", "karma", "ranking", "balance", "balance_credit", "balance_currency", "currency", "is_default_avatar", "is_online",
+  "is_forbidden", "is_deleted", "signup_application", "register_type", "register_source", "hash", "pre_hash", "access_token",
   "created_ip", "last_signin_time", "last_signin_ip", "github", "google", "qq", "wechat", "facebook", "dingtalk",
   "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs", "baidu", "alipay", "casdoor", "infoflow", "apple",
   "azuread", "azureadb2c", "slack", "steam", "bilibili", "okta", "douyin", "kwai", "line", "amazon", "auth0",
@@ -466,7 +473,7 @@ export const UserFields = ["owner", "name", "password", "display_name", "id", "t
   "wepay", "xero", "yahoo", "yammer", "yandex", "zoom", "metamask", "web3onboard", "custom", "webauthnCredentials",
   "preferred_mfa_type", "recovery_codes", "totp_secret", "mfa_phone_enabled", "mfa_email_enabled", "invitation",
   "invitation_code", "face_ids", "ldap", "properties", "roles", "permissions", "groups", "last_change_password_time",
-  "last_signin_wrong_time", "signin_wrong_times", "managedAccounts", "mfaAccounts", "need_update_password",
+  "last_signin_wrong_time", "signin_wrong_times", "managedAccounts", "mfaAccounts", "mfaItems", "need_update_password",
   "created_time", "updated_time", "deleted_time",
   "ip_whitelist"];
 
@@ -497,12 +504,13 @@ export const GetTranslatedUserItems = () => {
     {name: "Country/Region", label: i18next.t("user:Country/Region")},
     {name: "Location", label: i18next.t("user:Location")},
     {name: "Address", label: i18next.t("user:Address")},
+    {name: "Addresses", label: i18next.t("user:Addresses")},
     {name: "Affiliation", label: i18next.t("user:Affiliation")},
-    {name: "Title", label: i18next.t("user:Title")},
+    {name: "Title", label: i18next.t("general:Title")},
     {name: "ID card type", label: i18next.t("user:ID card type")},
     {name: "ID card", label: i18next.t("user:ID card")},
     {name: "ID card info", label: i18next.t("user:ID card info")},
-    {name: "Real name", label: i18next.t("user:Real name")},
+    {name: "Real name", label: i18next.t("application:Real name")},
     {name: "ID verification", label: i18next.t("user:ID verification")},
     {name: "Homepage", label: i18next.t("user:Homepage")},
     {name: "Bio", label: i18next.t("user:Bio")},
@@ -514,11 +522,14 @@ export const GetTranslatedUserItems = () => {
     {name: "Balance", label: i18next.t("user:Balance")},
     {name: "Balance currency", label: i18next.t("organization:Balance currency")},
     {name: "Balance credit", label: i18next.t("organization:Balance credit")},
-    {name: "Transactions", label: i18next.t("transaction:Transactions")},
+    {name: "Cart", label: i18next.t("general:Cart")},
+    {name: "Transactions", label: i18next.t("general:Transactions")},
     {name: "Score", label: i18next.t("user:Score")},
     {name: "Karma", label: i18next.t("user:Karma")},
     {name: "Ranking", label: i18next.t("user:Ranking")},
     {name: "Signup application", label: i18next.t("general:Signup application")},
+    {name: "Register type", label: i18next.t("user:Register type")},
+    {name: "Register source", label: i18next.t("user:Register source")},
     {name: "API key", label: i18next.t("general:API key")},
     {name: "Groups", label: i18next.t("general:Groups")},
     {name: "Roles", label: i18next.t("general:Roles")},
@@ -531,10 +542,11 @@ export const GetTranslatedUserItems = () => {
     {name: "Is deleted", label: i18next.t("user:Is deleted")},
     {name: "Need update password", label: i18next.t("user:Need update password")},
     {name: "IP whitelist", label: i18next.t("general:IP whitelist")},
-    {name: "Multi-factor authentication", label: i18next.t("user:Multi-factor authentication")},
+    {name: "Multi-factor authentication", label: i18next.t("mfa:Multi-factor authentication")},
     {name: "WebAuthn credentials", label: i18next.t("user:WebAuthn credentials")},
+    {name: "Last change password time", label: i18next.t("user:Last change password time")},
     {name: "Managed accounts", label: i18next.t("user:Managed accounts")},
-    {name: "Face ID", label: i18next.t("user:Face ID")},
+    {name: "Face ID", label: i18next.t("login:Face ID")},
     {name: "MFA accounts", label: i18next.t("user:MFA accounts")},
     {name: "MFA items", label: i18next.t("general:MFA items")},
   ];
@@ -550,6 +562,8 @@ export function getUserColumns() {
       transField = "Country/Region";
     } else if (field === "mfaAccounts") {
       transField = "MFA accounts";
+    } else if (field === "mfaItems") {
+      transField = "MFA items";
     } else if (field === "face_ids") {
       transField = "Face ID";
     } else if (field === "managedAccounts") {
@@ -682,6 +696,10 @@ export function initServerUrl() {
 export function isLocalhost() {
   const hostname = window.location.hostname;
   return hostname === "localhost";
+}
+
+export function initWebConfig() {
+  Conf.initConfigFromCookie();
 }
 
 export function getFullServerUrl() {
@@ -829,7 +847,7 @@ export function hasPromptPage(application) {
   }
 
   const signupItems = getAllPromptedSignupItems(application);
-  if (signupItems?.length > 0) {
+  if (signupItems?.filter(item => item.name === "Country/Region").length > 0) {
     return true;
   }
 
@@ -1287,6 +1305,7 @@ export function getProviderTypeOptions(category) {
         {id: "Azure ACS", name: "Azure ACS"},
         {id: "SendGrid", name: "SendGrid"},
         {id: "Custom HTTP Email", name: "Custom HTTP Email"},
+        {id: "Resend", name: "Resend"},
       ]
     );
   } else if (category === "SMS") {
@@ -2232,7 +2251,7 @@ export function createFormAndSubmit(url, params) {
 export function getFormTypeOptions() {
   return [
     {id: "users", name: "general:Users"},
-    {id: "providers", name: "general:Providers"},
+    {id: "providers", name: "application:Providers"},
     {id: "applications", name: "general:Applications"},
     {id: "organizations", name: "general:Organizations"},
   ];
@@ -2263,8 +2282,8 @@ export function getFormTypeItems(formType) {
       {name: "owner", label: "general:Organization", visible: true, width: "150"},
       {name: "createdTime", label: "general:Created time", visible: true, width: "180"},
       {name: "displayName", label: "general:Display name", visible: true, width: "150"},
-      {name: "category", label: "provider:Category", visible: true, width: "110"},
-      {name: "type", label: "provider:Type", visible: true, width: "110"},
+      {name: "category", label: "general:Category", visible: true, width: "110"},
+      {name: "type", label: "general:Type", visible: true, width: "110"},
       {name: "clientId", label: "provider:Client ID", visible: true, width: "100"},
       {name: "providerUrl", label: "provider:Provider URL", visible: true, width: "150"},
     ];
@@ -2275,7 +2294,7 @@ export function getFormTypeItems(formType) {
       {name: "displayName", label: "general:Display name", visible: true, width: "150"},
       {name: "logo", label: "Logo", visible: true, width: "200"},
       {name: "organization", label: "general:Organization", visible: true, width: "150"},
-      {name: "providers", label: "general:Providers", visible: true, width: "500"},
+      {name: "providers", label: "application:Providers", visible: true, width: "500"},
     ];
   } else if (formType === "organizations") {
     return [
@@ -2342,7 +2361,7 @@ export function getApiPaths() {
       res.push("place-order", "cancel-order", "pay-order");
     }
     if (obj === "user") {
-      res.push("add-user-keys", "remove-user-from-group", "upload-users");
+      res.push("remove-user-from-group", "upload-users");
       res.push("check-user-password", "set-password", "reset-email-or-phone");
       res.push("verify-identification");
     }
@@ -2411,4 +2430,49 @@ export function getApiPaths() {
   res.push("user", "userinfo");
 
   return res;
+}
+
+export function getItemId(item) {
+  return item.owner + "/" + item.name;
+}
+
+export function getVersionInfo(text, siteName) {
+  if (text === "") {
+    return null;
+  }
+
+  try {
+    const versionInfo = JSON.parse(text);
+    const link = versionInfo?.version !== "" ? `${getRepoUrl(siteName)}/releases/tag/${versionInfo?.version}` : "";
+    let versionText = versionInfo?.version !== "" ? versionInfo?.version : "Unknown version";
+    if (versionInfo?.commitOffset > 0) {
+      versionText += ` (ahead+${versionInfo?.commitOffset})`;
+    }
+
+    return {text: versionText, link: link};
+  } catch (e) {
+    return {text: "", link: ""};
+  }
+}
+
+export function prependRow(array, row) {
+  return [row, ...array];
+}
+
+function getOriginalName(name) {
+  const tokens = name.split("_");
+  if (tokens.length > 0) {
+    return tokens[0];
+  } else {
+    return name;
+  }
+}
+
+export function getRepoUrl(name) {
+  name = getOriginalName(name);
+  if (name === "casdoor") {
+    return "https://github.com/casdoor/casdoor";
+  } else {
+    return `https://github.com/casbin/${name}`;
+  }
 }

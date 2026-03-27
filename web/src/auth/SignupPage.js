@@ -254,6 +254,11 @@ class SignupPage extends React.Component {
     }
   }
 
+  getLanguageSelectorMode(application) {
+    const languagesItem = application.signinItems?.find((item) => item.name === "Languages");
+    return languagesItem?.rule;
+  }
+
   onFinish(values) {
     const application = this.getApplicationObj();
 
@@ -273,14 +278,41 @@ class SignupPage extends React.Component {
       values.education = values.education.join(", ");
     }
 
+    if (this.state.invitationCode && !values.invitationCode) {
+      values.invitationCode = this.state.invitationCode;
+    }
+
     const params = new URLSearchParams(window.location.search);
     values.plan = params.get("plan");
     values.pricing = params.get("pricing");
-    AuthBackend.signup(values)
+
+    // Get OAuth parameters if present
+    const oAuthParams = Util.getOAuthGetParameters();
+
+    AuthBackend.signup(values, oAuthParams)
       .then((res) => {
         if (res.status === "ok") {
+          // Check if this is OAuth flow with code response
+          // When OAuth parameters are present and code is returned, it won't contain '/'
+          if (oAuthParams && res.data && typeof res.data === "string" && !res.data.includes("/")) {
+            // OAuth code returned, redirect to redirect_uri with code
+            const code = res.data;
+            const redirectUrl = `${oAuthParams.redirectUri}${oAuthParams.redirectUri.includes("?") ? "&" : "?"}code=${code}&state=${oAuthParams.state}`;
+            Setting.goToLink(redirectUrl);
+            return;
+          }
+
+          // Check if consent is required
+          if (oAuthParams && res.data && typeof res.data === "object" && res.data.required === true) {
+            // Consent required, redirect to consent page
+            Setting.goToLink(`/consent/${application.name}?${window.location.search.substring(1)}`);
+            return;
+          }
+
           // the user's id will be returned by `signup()`, if user signup by phone, the `username` in `values` is undefined.
-          values.username = res.data.split("/")[1];
+          if (typeof res.data === "string") {
+            values.username = res.data.split("/")[1];
+          }
           if (Setting.hasPromptPage(application) && (!values.plan || !values.pricing)) {
             AuthBackend.getAccount("")
               .then((res) => {
@@ -409,7 +441,7 @@ class SignupPage extends React.Component {
         <Form.Item
           name="name"
           className="signup-name"
-          label={(signupItem.label ? signupItem.label : (signupItem.rule === "Real name" || signupItem.rule === "First, last") ? i18next.t("general:Real name") : i18next.t("general:Display name"))}
+          label={(signupItem.label ? signupItem.label : (signupItem.rule === "Real name" || signupItem.rule === "First, last") ? i18next.t("application:Real name") : i18next.t("general:Display name"))}
           rules={displayNameRules}
         >
           <Input className="signup-name-input" placeholder={signupItem.placeholder} />
@@ -538,13 +570,13 @@ class SignupPage extends React.Component {
               rules={[
                 {
                   required: required,
-                  message: i18next.t("signup:Please input your Email!"),
+                  message: i18next.t("login:Please input your Email!"),
                 },
                 {
                   validator: (_, value) => {
                     if (this.state.email !== "" && !Setting.isValidEmail(this.state.email)) {
                       this.setState({validEmail: false});
-                      return Promise.reject(i18next.t("signup:The input is not valid Email!"));
+                      return Promise.reject(i18next.t("login:The input is not valid Email!"));
                     }
 
                     if (signupItem.regex) {
@@ -758,7 +790,7 @@ class SignupPage extends React.Component {
         <Form.Item
           name="confirm"
           className="signup-confirm"
-          label={signupItem.label ? signupItem.label : i18next.t("signup:Confirm")}
+          label={signupItem.label ? signupItem.label : i18next.t("general:Confirm")}
           dependencies={["password"]}
           hasFeedback
           rules={[
@@ -983,7 +1015,11 @@ class SignupPage extends React.Component {
               {
                 Setting.renderLogo(application)
               }
-              <LanguageSelect languages={application.organizationObj.languages} style={{top: "55px", right: "5px", position: "absolute"}} />
+              <LanguageSelect
+                languages={application.organizationObj.languages}
+                mode={this.getLanguageSelectorMode(application)}
+                style={{top: "55px", right: "5px", position: "absolute"}}
+              />
               {
                 this.renderForm(application)
               }

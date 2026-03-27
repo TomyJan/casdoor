@@ -26,7 +26,6 @@ import (
 	"github.com/casdoor/casdoor/i18n"
 	"github.com/casdoor/casdoor/idp"
 	"github.com/casdoor/casdoor/util"
-	"github.com/casvisor/casvisor-go-sdk/casvisorsdk"
 	"github.com/go-webauthn/webauthn/webauthn"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/xorm-io/core"
@@ -184,9 +183,32 @@ func getUserExtraProperty(user *User, providerType, key string) (string, error) 
 	return extra[key], nil
 }
 
+// getOAuthTokenPropertyKey returns the property key for storing OAuth tokens
+func getOAuthTokenPropertyKey(providerType string, tokenType string) string {
+	return fmt.Sprintf("oauth_%s_%s", providerType, tokenType)
+}
+
+// GetUserOAuthAccessToken retrieves the OAuth access token for a specific provider
+func GetUserOAuthAccessToken(user *User, providerType string) string {
+	return getUserProperty(user, getOAuthTokenPropertyKey(providerType, "accessToken"))
+}
+
+// GetUserOAuthRefreshToken retrieves the OAuth refresh token for a specific provider
+func GetUserOAuthRefreshToken(user *User, providerType string) string {
+	return getUserProperty(user, getOAuthTokenPropertyKey(providerType, "refreshToken"))
+}
+
 func SetUserOAuthProperties(organization *Organization, user *User, providerType string, userInfo *idp.UserInfo, token *oauth2.Token, userMapping ...map[string]string) (bool, error) {
 	// Store the original OAuth provider token if available
 	if token != nil && token.AccessToken != "" {
+		// Store tokens per provider in Properties map
+		setUserProperty(user, getOAuthTokenPropertyKey(providerType, "accessToken"), token.AccessToken)
+
+		if token.RefreshToken != "" {
+			setUserProperty(user, getOAuthTokenPropertyKey(providerType, "refreshToken"), token.RefreshToken)
+		}
+
+		// Also update the legacy fields for backward compatibility
 		user.OriginalToken = token.AccessToken
 		user.OriginalRefreshToken = token.RefreshToken
 	}
@@ -227,9 +249,17 @@ func SetUserOAuthProperties(organization *Organization, user *User, providerType
 
 	if userInfo.AvatarUrl != "" {
 		propertyName := fmt.Sprintf("oauth_%s_avatarUrl", providerType)
-		setUserProperty(user, propertyName, userInfo.AvatarUrl)
-		if user.Avatar == "" || user.Avatar == organization.DefaultAvatar {
-			user.Avatar = userInfo.AvatarUrl
+
+		if organization.UsePermanentAvatar {
+			err := syncOAuthAvatarToPermanentStorage(organization, user, propertyName, userInfo.AvatarUrl)
+			if err != nil {
+				return false, err
+			}
+		} else {
+			setUserProperty(user, propertyName, userInfo.AvatarUrl)
+			if user.Avatar == "" || user.Avatar == organization.DefaultAvatar {
+				user.Avatar = userInfo.AvatarUrl
+			}
 		}
 	}
 
@@ -260,6 +290,45 @@ func SetUserOAuthProperties(organization *Organization, user *User, providerType
 	}
 
 	return UpdateUserForAllFields(user.GetId(), user)
+}
+
+// syncOAuthAvatarToPermanentStorage ensures the user's avatar is stored in permanent storage.
+// It checks whether a permanent avatar already exists for the given sourceAvatarURL.
+// If not, it uploads the avatar and retrieves a permanent URL.
+// Finally, it updates the user's avatar fields with the resolved permanent URL.
+func syncOAuthAvatarToPermanentStorage(organization *Organization, user *User, propertyName, sourceAvatarUrl string) error {
+	oldAvatarUrl := getUserProperty(user, propertyName)
+
+	avatarUrl := sourceAvatarUrl
+	permanentAvatarUrl, err := getPermanentAvatarUrl(user.Owner, user.Name, sourceAvatarUrl, false)
+	if err != nil {
+		return err
+	}
+
+	if permanentAvatarUrl != "" {
+		avatarUrl = permanentAvatarUrl
+
+		if oldAvatarUrl != permanentAvatarUrl {
+			avatarUrl, err = getPermanentAvatarUrl(user.Owner, user.Name, sourceAvatarUrl, true)
+			if err != nil {
+				return err
+			}
+			if avatarUrl == "" {
+				avatarUrl = permanentAvatarUrl
+			}
+		}
+	}
+
+	setUserProperty(user, propertyName, avatarUrl)
+
+	if user.Avatar == "" ||
+		user.Avatar == organization.DefaultAvatar ||
+		user.Avatar == sourceAvatarUrl ||
+		(oldAvatarUrl != "" && user.Avatar == oldAvatarUrl) {
+		user.Avatar = avatarUrl
+	}
+
+	return nil
 }
 
 func applyUserMapping(user *User, extraClaims map[string]string, userMapping map[string]string) {
@@ -382,7 +451,7 @@ func ClearUserOAuthProperties(user *User, providerType string) (bool, error) {
 
 func userVisible(isAdmin bool, item *AccountItem) bool {
 	if item == nil {
-		return false
+		return true
 	}
 
 	if item.ViewRule == "Admin" && !isAdmin {
@@ -541,10 +610,11 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 			itemsChanged = append(itemsChanged, item)
 		}
 	}
-	if oldUser.SignupApplication != newUser.SignupApplication {
-		item := GetAccountItemByName("Signup application", organization)
+
+	if oldUser.Language != newUser.Language {
+		item := GetAccountItemByName("Language", organization)
 		if !userVisible(isAdmin, item) {
-			newUser.SignupApplication = oldUser.SignupApplication
+			newUser.Language = oldUser.Language
 		} else {
 			itemsChanged = append(itemsChanged, item)
 		}
@@ -572,6 +642,83 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		item := GetAccountItemByName("Education", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Education = oldUser.Education
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.Balance != newUser.Balance {
+		item := GetAccountItemByName("Balance", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.Balance = oldUser.Balance
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.BalanceCredit != newUser.BalanceCredit {
+		item := GetAccountItemByName("Balance credit", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.BalanceCredit = oldUser.BalanceCredit
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.BalanceCurrency != newUser.BalanceCurrency {
+		item := GetAccountItemByName("Balance currency", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.BalanceCurrency = oldUser.BalanceCurrency
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	oldUserCartJson, _ := json.Marshal(oldUser.Cart)
+	if newUser.Cart == nil {
+		newUser.Cart = []ProductInfo{}
+	}
+	newUserCartJson, _ := json.Marshal(newUser.Cart)
+	if string(oldUserCartJson) != string(newUserCartJson) {
+		item := GetAccountItemByName("Cart", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.Cart = oldUser.Cart
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.Score != newUser.Score {
+		item := GetAccountItemByName("Score", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.Score = oldUser.Score
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.Karma != newUser.Karma {
+		item := GetAccountItemByName("Karma", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.Karma = oldUser.Karma
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.Ranking != newUser.Ranking {
+		item := GetAccountItemByName("Ranking", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.Ranking = oldUser.Ranking
+		} else {
+			itemsChanged = append(itemsChanged, item)
+		}
+	}
+
+	if oldUser.SignupApplication != newUser.SignupApplication {
+		item := GetAccountItemByName("Signup application", organization)
+		if !userVisible(isAdmin, item) {
+			newUser.SignupApplication = oldUser.SignupApplication
 		} else {
 			itemsChanged = append(itemsChanged, item)
 		}
@@ -705,51 +852,6 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 
-	if oldUser.Balance != newUser.Balance {
-		item := GetAccountItemByName("Balance", organization)
-		if !userVisible(isAdmin, item) {
-			newUser.Balance = oldUser.Balance
-		} else {
-			itemsChanged = append(itemsChanged, item)
-		}
-	}
-
-	if oldUser.Score != newUser.Score {
-		item := GetAccountItemByName("Score", organization)
-		if !userVisible(isAdmin, item) {
-			newUser.Score = oldUser.Score
-		} else {
-			itemsChanged = append(itemsChanged, item)
-		}
-	}
-
-	if oldUser.Karma != newUser.Karma {
-		item := GetAccountItemByName("Karma", organization)
-		if !userVisible(isAdmin, item) {
-			newUser.Karma = oldUser.Karma
-		} else {
-			itemsChanged = append(itemsChanged, item)
-		}
-	}
-
-	if oldUser.Language != newUser.Language {
-		item := GetAccountItemByName("Language", organization)
-		if !userVisible(isAdmin, item) {
-			newUser.Language = oldUser.Language
-		} else {
-			itemsChanged = append(itemsChanged, item)
-		}
-	}
-
-	if oldUser.Ranking != newUser.Ranking {
-		item := GetAccountItemByName("Ranking", organization)
-		if !userVisible(isAdmin, item) {
-			newUser.Ranking = oldUser.Ranking
-		} else {
-			itemsChanged = append(itemsChanged, item)
-		}
-	}
-
 	if oldUser.Currency != newUser.Currency {
 		item := GetAccountItemByName("Currency", organization)
 		if !userVisible(isAdmin, item) {
@@ -769,6 +871,11 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 	}
 
 	for _, accountItem := range itemsChanged {
+		// Skip nil items - these occur when a field doesn't have a corresponding
+		// account item configuration, meaning no validation rules apply
+		if accountItem == nil {
+			continue
+		}
 
 		if pass, err := CheckAccountItemModifyRule(accountItem, isAdmin, lang); !pass {
 			return pass, err
@@ -986,7 +1093,7 @@ func TriggerWebhookForUser(action string, user *User) {
 		return
 	}
 
-	record := &casvisorsdk.Record{
+	record := &Record{
 		Name:         util.GenerateId(),
 		CreatedTime:  util.GetCurrentTime(),
 		Organization: user.Owner,

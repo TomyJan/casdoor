@@ -15,6 +15,7 @@
 package object
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -53,7 +54,8 @@ type Provider struct {
 
 	Host       string `xorm:"varchar(100)" json:"host"`
 	Port       int    `json:"port"`
-	DisableSsl bool   `json:"disableSsl"` // If the provider type is WeChat, DisableSsl means EnableQRCode, if type is Google, it means sync phone number
+	DisableSsl bool   `json:"disableSsl"`                  // Deprecated: Use SslMode instead. If the provider type is WeChat, DisableSsl means EnableQRCode, if type is Google, it means sync phone number
+	SslMode    string `xorm:"varchar(100)" json:"sslMode"` // "Auto" (empty means Auto), "Enable", "Disable"
 	Title      string `xorm:"varchar(100)" json:"title"`
 	Content    string `xorm:"varchar(2000)" json:"content"` // If provider type is WeChat, Content means QRCode string by Base64 encoding
 	Receiver   string `xorm:"varchar(100)" json:"receiver"`
@@ -424,7 +426,7 @@ func GetCaptchaProviderByApplication(applicationId, isCurrentProvider, lang stri
 	}
 
 	if application == nil || len(application.Providers) == 0 {
-		return nil, fmt.Errorf(i18n.Translate(lang, "provider:Invalid application id"))
+		return nil, errors.New(i18n.Translate(lang, "provider:Invalid application id"))
 	}
 	for _, provider := range application.Providers {
 		if provider.Provider == nil {
@@ -471,7 +473,7 @@ func GetFaceIdProviderByApplication(applicationId, isCurrentProvider, lang strin
 	}
 
 	if application == nil || len(application.Providers) == 0 {
-		return nil, fmt.Errorf(i18n.Translate(lang, "provider:Invalid application id"))
+		return nil, errors.New(i18n.Translate(lang, "provider:Invalid application id"))
 	}
 	for _, provider := range application.Providers {
 		if provider.Provider == nil {
@@ -512,7 +514,7 @@ func GetIdvProviderByApplication(applicationId, isCurrentProvider, lang string) 
 	}
 
 	if application == nil || len(application.Providers) == 0 {
-		return nil, fmt.Errorf(i18n.Translate(lang, "provider:Invalid application id"))
+		return nil, errors.New(i18n.Translate(lang, "provider:Invalid application id"))
 	}
 	for _, provider := range application.Providers {
 		if provider.Provider == nil {
@@ -563,7 +565,7 @@ func providerChangeTrigger(oldName string, newName string) error {
 	return session.Commit()
 }
 
-func FromProviderToIdpInfo(ctx *context.Context, provider *Provider) *idp.ProviderInfo {
+func FromProviderToIdpInfo(ctx *context.Context, provider *Provider) (*idp.ProviderInfo, error) {
 	providerInfo := &idp.ProviderInfo{
 		Type:          provider.Type,
 		SubType:       provider.SubType,
@@ -587,9 +589,19 @@ func FromProviderToIdpInfo(ctx *context.Context, provider *Provider) *idp.Provid
 		}
 	} else if provider.Type == "ADFS" || provider.Type == "AzureAD" || provider.Type == "AzureADB2C" || provider.Type == "Casdoor" || provider.Type == "Okta" {
 		providerInfo.HostUrl = provider.Domain
+	} else if provider.Type == "Alipay" && provider.Cert != "" {
+		// For Alipay with certificate mode, load private key from certificate
+		cert, err := GetCert(util.GetId(provider.Owner, provider.Cert))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load certificate for Alipay provider %s: %w", provider.Name, err)
+		}
+		if cert == nil {
+			return nil, fmt.Errorf("certificate not found for Alipay provider %s", provider.Name)
+		}
+		providerInfo.ClientSecret = cert.PrivateKey
 	}
 
-	return providerInfo
+	return providerInfo, nil
 }
 
 func GetIdvProviderFromProvider(provider *Provider) idv.IdvProvider {

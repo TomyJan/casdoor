@@ -14,14 +14,14 @@
 
 import React from "react";
 import {Button, Card, Col, Row, Tag, Typography} from "antd";
+import moment from "moment";
 import * as Setting from "./Setting";
 import * as ProductBackend from "./backend/ProductBackend";
 import * as UserBackend from "./backend/UserBackend";
 import i18next from "i18next";
+import {FloatingCartButton, QuantityStepper} from "./common/product/CartControls";
 
 const {Text, Title} = Typography;
-
-const MAX_DISPLAYED_RECHARGE_OPTIONS = 3;
 
 class ProductStorePage extends React.Component {
   constructor(props) {
@@ -30,14 +30,57 @@ class ProductStorePage extends React.Component {
       products: [],
       loading: true,
       addingToCartProducts: [],
+      productQuantities: {},
+      cartItemCount: 0,
     };
   }
 
   componentDidMount() {
+    if (!this.props.account) {
+      return;
+    }
+
     this.getProducts();
+    this.getCartItemCount();
+  }
+
+  componentDidUpdate(prevProps) {
+    if (!prevProps.account && this.props.account) {
+      this.getProducts();
+      this.getCartItemCount();
+    }
+  }
+
+  getCartItemCount() {
+    if (!this.props.account) {
+      return;
+    }
+
+    const userOwner = this.props.account.owner;
+    const userName = this.props.account.name;
+    UserBackend.getUser(userOwner, userName).then((res) => {
+      if (res.status === "ok" && res.data.cart) {
+        this.setState({
+          cartItemCount: res.data.cart.length,
+        });
+      }
+    });
+  }
+
+  updateProductQuantity(productName, value) {
+    this.setState(prevState => ({
+      productQuantities: {
+        ...prevState.productQuantities,
+        [productName]: value,
+      },
+    }));
   }
 
   getProducts() {
+    if (!this.props.account) {
+      return;
+    }
+
     const pageSize = 100; // Max products to display in the store
     const owner = Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account);
     this.setState({loading: true});
@@ -84,18 +127,25 @@ class ProductStorePage extends React.Component {
             }
           }
 
-          const existingItemIndex = cart.findIndex(item => item.name === product.name && item.price === product.price);
+          if (product.isRecharge) {
+            Setting.showMessage("error", i18next.t("product:Recharge products need to go to the product detail page to set custom amount"));
+            this.setState(prevState => ({addingToCartProducts: prevState.addingToCartProducts.filter(name => name !== product.name)}));
+            return;
+          }
+
+          const existingItemIndex = cart.findIndex(item => item.name === product.name);
+          const quantityToAdd = this.state.productQuantities[product.name] || 1;
 
           if (existingItemIndex !== -1) {
-            cart[existingItemIndex].quantity += 1;
+            cart[existingItemIndex].quantity = (cart[existingItemIndex].quantity ?? 1) + quantityToAdd;
           } else {
             const newCartProductInfo = {
               name: product.name,
-              price: product.price,
+              createdTime: moment().format(),
               currency: product.currency,
               pricingName: "",
               planName: "",
-              quantity: 1,
+              quantity: quantityToAdd,
             };
             cart.push(newCartProductInfo);
           }
@@ -105,6 +155,9 @@ class ProductStorePage extends React.Component {
             .then((res) => {
               if (res.status === "ok") {
                 Setting.showMessage("success", i18next.t("general:Successfully added"));
+                this.setState({
+                  cartItemCount: cart.length,
+                });
               } else {
                 Setting.showMessage("error", res.msg);
               }
@@ -127,11 +180,14 @@ class ProductStorePage extends React.Component {
   }
 
   handleBuyProduct(product) {
-    this.props.history.push(`/products/${product.owner}/${product.name}/buy`);
+    const quantity = this.state.productQuantities[product.name] || 1;
+    this.props.history.push(`/products/${product.owner}/${product.name}/buy?quantity=${quantity}`);
   }
 
   renderProductCard(product) {
     const isAdding = this.state.addingToCartProducts.includes(product.name);
+    const quantity = this.state.productQuantities[product.name] || 1;
+
     return (
       <Col xs={24} sm={12} md={8} lg={6} key={`${product.owner}/${product.name}`} style={{marginBottom: "20px"}}>
         <Card
@@ -149,6 +205,40 @@ class ProductStorePage extends React.Component {
           }
           actions={[
             <div key="actions" style={{display: "flex", justifyContent: "center", gap: "10px", width: "100%", padding: "0 10px"}} onClick={(e) => e.stopPropagation()}>
+              {!product.isRecharge && (
+                <>
+                  <QuantityStepper
+                    value={quantity}
+                    min={1}
+                    onIncrease={() => this.updateProductQuantity(product.name, quantity + 1)}
+                    onDecrease={() => this.updateProductQuantity(product.name, Math.max(1, quantity - 1))}
+                    onChange={(val) => this.updateProductQuantity(product.name, val || 1)}
+                    disabled={isAdding}
+                    style={{
+                      height: "45px",
+                      fontSize: "16px",
+                      width: "120px",
+                    }}
+                  />
+                  <Button
+                    key="add"
+                    type="default"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      this.addToCart(product);
+                    }}
+                    style={{
+                      width: "150px",
+                      height: "45px",
+                      fontSize: "16px",
+                    }}
+                    disabled={isAdding}
+                    loading={isAdding}
+                  >
+                    {i18next.t("product:Add to cart")}
+                  </Button>
+                </>
+              )}
               <Button
                 key="buy"
                 type="primary"
@@ -156,23 +246,14 @@ class ProductStorePage extends React.Component {
                   e.stopPropagation();
                   this.handleBuyProduct(product);
                 }}
+                style={{
+                  width: "150px",
+                  height: "45px",
+                  fontSize: "16px",
+                }}
               >
                 {i18next.t("product:Buy")}
               </Button>
-              {!product.isRecharge && (
-                <Button
-                  key="add"
-                  type="default"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    this.addToCart(product);
-                  }}
-                  disabled={isAdding}
-                  loading={isAdding}
-                >
-                  {i18next.t("product:Add to cart")}
-                </Button>
-              )}
             </div>,
           ]}
           bodyStyle={{flex: 1, display: "flex", flexDirection: "column"}}
@@ -199,17 +280,15 @@ class ProductStorePage extends React.Component {
                       <Text type="secondary" style={{fontSize: "13px", display: "block", marginBottom: 4}}>
                         {i18next.t("product:Recharge options")}:
                       </Text>
-                      <div style={{display: "flex", flexWrap: "wrap", gap: "4px"}}>
-                        {product.rechargeOptions.slice(0, MAX_DISPLAYED_RECHARGE_OPTIONS).map((amount, index) => (
-                          <Tag key={index} color="blue" style={{fontSize: "14px", fontWeight: 600, margin: 0}}>
+                      <div style={{display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center"}}>
+                        {product.rechargeOptions.map((amount, index) => (
+                          <Tag key={amount} color="blue" style={{fontSize: "14px", fontWeight: 600, margin: 0}}>
                             {Setting.getCurrencySymbol(product.currency)}{amount}
                           </Tag>
                         ))}
-                        {product.rechargeOptions.length > MAX_DISPLAYED_RECHARGE_OPTIONS && (
-                          <Tag color="blue" style={{fontSize: "14px", fontWeight: 600, margin: 0}}>
-                            +{product.rechargeOptions.length - MAX_DISPLAYED_RECHARGE_OPTIONS}
-                          </Tag>
-                        )}
+                        <Text type="secondary" style={{fontSize: "13px", marginLeft: 8}}>
+                          {Setting.getCurrencyWithFlag(product.currency)}
+                        </Text>
                       </div>
                     </div>
                   )}
@@ -218,13 +297,23 @@ class ProductStorePage extends React.Component {
                       <Text strong style={{fontSize: "16px", color: "#1890ff"}}>
                         {i18next.t("product:Custom amount available")}
                       </Text>
+                      {(!product.rechargeOptions || product.rechargeOptions.length === 0) && (
+                        <Text type="secondary" style={{fontSize: "13px", marginLeft: 8}}>
+                          {Setting.getCurrencyWithFlag(product.currency)}
+                        </Text>
+                      )}
                     </div>
                   )}
-                  <div>
-                    <Text type="secondary" style={{fontSize: "13px"}}>
-                      {Setting.getCurrencyWithFlag(product.currency)}
-                    </Text>
-                  </div>
+                  {(!product.rechargeOptions || product.rechargeOptions.length === 0) && product.disableCustomRecharge === true && (
+                    <div style={{marginBottom: 8}}>
+                      <Text type="secondary" style={{fontSize: "13px", display: "block", marginBottom: 4}}>
+                        {i18next.t("product:No recharge options available")}
+                      </Text>
+                      <Text type="secondary" style={{fontSize: "13px"}}>
+                        {Setting.getCurrencyWithFlag(product.currency)}
+                      </Text>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -253,6 +342,10 @@ class ProductStorePage extends React.Component {
   render() {
     return (
       <div>
+        <FloatingCartButton
+          itemCount={this.state.cartItemCount}
+          onClick={() => this.props.history.push("/cart")}
+        />
         <Row gutter={[16, 16]}>
           {this.state.loading ? (
             <Col span={24}>

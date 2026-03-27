@@ -59,6 +59,7 @@ p, *, *, GET, /api/get-qrcode, *, *
 p, *, *, GET, /api/get-webhook-event, *, *
 p, *, *, GET, /api/get-captcha-status, *, *
 p, *, *, *, /api/login/oauth, *, *
+p, *, *, POST, /api/oauth/register, *, *
 p, *, *, GET, /api/get-application, *, *
 p, *, *, GET, /api/get-organization-applications, *, *
 p, *, *, GET, /api/get-user, *, *
@@ -67,6 +68,7 @@ p, *, *, POST, /api/upload-users, *, *
 p, *, *, GET, /api/get-resources, *, *
 p, *, *, GET, /api/get-records, *, *
 p, *, *, GET, /api/get-product, *, *
+p, *, *, GET, /api/get-products, *, *
 p, *, *, GET, /api/get-order, *, *
 p, *, *, GET, /api/get-orders, *, *
 p, *, *, GET, /api/get-user-orders, *, *
@@ -116,6 +118,7 @@ p, *, *, GET, /api/run-casbin-command, *, *
 p, *, *, POST, /api/refresh-engines, *, *
 p, *, *, GET, /api/get-invitation-info, *, *
 p, *, *, GET, /api/faceid-signin-begin, *, *
+p, *, *, GET, /api/kerberos-login, *, *
 `
 
 		sa := stringadapter.NewAdapter(ruleText)

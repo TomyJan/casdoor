@@ -48,7 +48,9 @@ import FaceIdTable from "./table/FaceIdTable";
 import MfaAccountTable from "./table/MfaAccountTable";
 import MfaTable from "./table/MfaTable";
 import TransactionTable from "./table/TransactionTable";
+import CartTable from "./table/CartTable";
 import * as TransactionBackend from "./backend/TransactionBackend";
+import ConsentTable from "./table/ConsentTable";
 import {Content, Header} from "antd/es/layout/layout";
 import Sider from "antd/es/layout/Sider";
 
@@ -72,6 +74,7 @@ class UserEditPage extends React.Component {
       idCardInfo: ["ID card front", "ID card back", "ID card with person"],
       openFaceRecognitionModal: false,
       transactions: [],
+      consents: [],
       activeMenuKey: window.location.hash?.slice(1) || "",
       menuMode: "Horizontal",
     };
@@ -109,6 +112,7 @@ class UserEditPage extends React.Component {
         this.setState({
           user: res.data,
           multiFactorAuths: res.data?.multiFactorAuths ?? [],
+          consents: res.data?.applicationScopes ?? [],
           loading: false,
         });
 
@@ -130,17 +134,6 @@ class UserEditPage extends React.Component {
       })
       .catch(error => {
         Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
-  }
-
-  addUserKeys() {
-    UserBackend.addUserKeys(this.state.user)
-      .then((res) => {
-        if (res.status === "ok") {
-          this.getUser();
-        } else {
-          Setting.showMessage("error", res.msg);
-        }
       });
   }
 
@@ -273,7 +266,7 @@ class UserEditPage extends React.Component {
 
     // Fallback to comparing by owner and name
     return (this.state.user.owner === this.props.account.owner &&
-            this.state.user.name === this.props.account.name);
+      this.state.user.name === this.props.account.name);
   }
 
   isSelfOrAdmin() {
@@ -608,13 +601,20 @@ class UserEditPage extends React.Component {
       );
     } else if (accountItem.name === "Addresses") {
       return (
-        <AddressTable
-          title={i18next.t("user:Addresses")}
-          table={this.state.user.addresses}
-          onUpdateTable={(value) => {
-            this.updateUserField("addresses", value);
-          }}
-        />
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Addresses"), i18next.t("user:Addresses"))} :
+          </Col>
+          <Col span={22} >
+            <AddressTable
+              title={i18next.t("user:Addresses")}
+              table={this.state.user.addresses}
+              onUpdateTable={(value) => {
+                this.updateUserField("addresses", value);
+              }}
+            />
+          </Col>
+        </Row>
       );
     } else if (accountItem.name === "Affiliation") {
       return (
@@ -626,7 +626,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Title"), i18next.t("user:Title - Tooltip"))} :
+            {Setting.getLabel(i18next.t("general:Title"), i18next.t("general:Title - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input value={this.state.user.title} onChange={e => {
@@ -686,7 +686,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Real name"), i18next.t("user:Real name - Tooltip"))} :
+            {Setting.getLabel(i18next.t("application:Real name"), i18next.t("user:Real name - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input value={this.state.user.realName} disabled={disabled} onChange={e => {
@@ -744,7 +744,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("user:Tag - Tooltip"))} :
+            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("product:Tag - Tooltip"))} :
           </Col>
           <Col span={22} >
             {
@@ -835,7 +835,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Balance credit"), i18next.t("user:Balance credit - Tooltip"))} :
+            {Setting.getLabel(i18next.t("organization:Balance credit"), i18next.t("organization:Balance credit - Tooltip"))} :
           </Col>
           <Col span={22} >
             <InputNumber value={this.state.user.balanceCredit ?? 0} onChange={value => {
@@ -848,7 +848,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("user:Balance currency"), i18next.t("user:Balance currency - Tooltip"))} :
+            {Setting.getLabel(i18next.t("organization:Balance currency"), i18next.t("organization:Balance currency - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.user.balanceCurrency || "USD"} onChange={(value => {
@@ -861,6 +861,17 @@ class UserEditPage extends React.Component {
           </Col>
         </Row>
       );
+    } else if (accountItem.name === "Cart") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:Cart"), i18next.t("general:Cart"))} :
+          </Col>
+          <Col span={22}>
+            <CartTable cart={this.state.user.cart} />
+          </Col>
+        </Row>
+      );
     } else if (accountItem.name === "Transactions") {
       return (
         <Row style={{marginTop: "20px"}} >
@@ -868,7 +879,7 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Transactions"), i18next.t("general:Transactions"))} :
           </Col>
           <Col span={22}>
-            <TransactionTable transactions={this.state.transactions} hideTag={true} />
+            <TransactionTable title={i18next.t("general:Transactions")} transactions={this.state.transactions} hideTag={true} />
           </Col>
         </Row>
       );
@@ -946,39 +957,6 @@ class UserEditPage extends React.Component {
           <Col span={22} >
             <Input value={this.state.user.registerSource} disabled={!this.props.account.isAdmin}
               onChange={e => {this.updateUserField("registerSource", e.target.value);}} />
-          </Col>
-        </Row>
-      );
-    } else if (accountItem.name === "API key") {
-      return (
-        <Row style={{marginTop: "20px"}} >
-          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("general:API key"), i18next.t("general:API key - Tooltip"))} :
-          </Col>
-          <Col span={22} >
-            <Row style={{marginTop: "20px"}} >
-              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {Setting.getLabel(i18next.t("general:Access key"), i18next.t("general:Access key - Tooltip"))} :
-              </Col>
-              <Col span={22} >
-                <Input value={this.state.user.accessKey} disabled={true} />
-              </Col>
-            </Row>
-            <Row style={{marginTop: "20px"}} >
-              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {Setting.getLabel(i18next.t("general:Access secret"), i18next.t("general:Access secret - Tooltip"))} :
-              </Col>
-              <Col span={22} >
-                <Input value={this.state.user.accessSecret} disabled={true} />
-              </Col>
-            </Row>
-            <Row style={{marginTop: "20px", marginBottom: "20px"}} >
-              <Col span={22} >
-                <Button type="primary" onClick={() => this.addUserKeys()}>
-                  {i18next.t("general:Generate")}
-                </Button>
-              </Col>
-            </Row>
           </Col>
         </Row>
       );
@@ -1110,6 +1088,21 @@ class UserEditPage extends React.Component {
           />
         </Col>
       </Row>);
+    } else if (accountItem.name === "Consents") {
+      return (
+        <Row style={{marginTop: "20px"}}>
+          <Col style={{marginTop: "5px"}} span={Setting.isMobile() ? 22 : 2}>
+            {Setting.getLabel(i18next.t("consent:Consents"), i18next.t("consent:Consents - Tooltip"))} :
+          </Col>
+          <Col span={22}>
+            <ConsentTable
+              title={i18next.t("consent:Consents")}
+              table={this.state.consents}
+              onUpdateTable={() => this.getUser()}
+            />
+          </Col>
+        </Row>
+      );
     } else if (accountItem.name === "Multi-factor authentication") {
       return (
         !this.isSelfOrAdmin() ? null : (
@@ -1118,15 +1111,21 @@ class UserEditPage extends React.Component {
               {Setting.getLabel(i18next.t("mfa:Multi-factor authentication"), i18next.t("mfa:Multi-factor authentication - Tooltip "))} :
             </Col>
             <Col span={22} >
-              <Card size="small" title={i18next.t("mfa:Multi-factor methods")}
-                extra={this.state.multiFactorAuths?.some(mfaProps => mfaProps.enabled) ?
-                  <PopconfirmModal
-                    text={i18next.t("general:Disable")}
-                    title={i18next.t("general:Sure to disable") + "?"}
-                    onConfirm={() => this.deleteMfa()}
-                  /> : null
-                }>
+              <Card size="small" title={
+                <div>
+                  {i18next.t("mfa:Multi-factor methods")}&nbsp;&nbsp;&nbsp;&nbsp;
+                  {this.state.multiFactorAuths?.some(mfaProps => mfaProps.enabled) ?
+                    <PopconfirmModal
+                      text={i18next.t("general:Disable")}
+                      title={i18next.t("general:Sure to disable") + "?"}
+                      onConfirm={() => this.deleteMfa()}
+                      size="small"
+                    /> : null
+                  }
+                </div>
+              }>
                 <List
+                  size="small"
                   rowKey="mfaType"
                   itemLayout="horizontal"
                   dataSource={this.state.multiFactorAuths}
@@ -1437,7 +1436,7 @@ class UserEditPage extends React.Component {
                 type="card"
                 activeKey={activeKey}
                 items={tabs.map(tab => ({
-                  label: tab === "" ? i18next.t("user:Default") : tab,
+                  label: tab === "" ? i18next.t("general:Default") : tab,
                   key: tab,
                 }))}
               />
@@ -1457,7 +1456,7 @@ class UserEditPage extends React.Component {
                   }}
                   style={{marginBottom: "20px", height: "100%"}}
                   items={tabs.map(tab => ({
-                    label: tab === "" ? i18next.t("user:Default") : tab,
+                    label: tab === "" ? i18next.t("general:Default") : tab,
                     key: tab,
                   }))}
                 />

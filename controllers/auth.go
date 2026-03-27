@@ -161,12 +161,26 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		nonce := c.Ctx.Input.Query("nonce")
 		challengeMethod := c.Ctx.Input.Query("code_challenge_method")
 		codeChallenge := c.Ctx.Input.Query("code_challenge")
+		resource := c.Ctx.Input.Query("resource")
 
 		if challengeMethod != "S256" && challengeMethod != "null" && challengeMethod != "" {
 			c.ResponseError(c.T("auth:Challenge method should be S256"))
 			return
 		}
-		code, err := object.GetOAuthCode(userId, clientId, form.Provider, form.SigninMethod, responseType, redirectUri, scope, state, nonce, codeChallenge, c.Ctx.Request.Host, c.GetAcceptLanguage())
+
+		consentRequired, err := object.CheckConsentRequired(user, application, scope)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		if consentRequired {
+			resp = &Response{Status: "ok", Data: map[string]bool{"required": true}}
+			resp.Data3 = user.NeedUpdatePassword
+			return
+		}
+
+		code, err := object.GetOAuthCode(userId, clientId, form.Provider, form.SigninMethod, responseType, redirectUri, scope, state, nonce, codeChallenge, resource, c.Ctx.Request.Host, c.GetAcceptLanguage())
 		if err != nil {
 			c.ResponseError(err.Error(), nil)
 			return
@@ -184,10 +198,15 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		} else {
 			scope := c.Ctx.Input.Query("scope")
 			nonce := c.Ctx.Input.Query("nonce")
-			token, _ := object.GetTokenByUser(application, user, scope, nonce, c.Ctx.Request.Host)
-			resp = tokenToResponse(token)
+			expandedScope, valid := object.IsScopeValidAndExpand(scope, application)
+			if !valid {
+				resp = &Response{Status: "error", Msg: "error: invalid_scope", Data: ""}
+			} else {
+				token, _ := object.GetTokenByUser(application, user, expandedScope, nonce, c.Ctx.Request.Host)
+				resp = tokenToResponse(token)
 
-			resp.Data3 = user.NeedUpdatePassword
+				resp.Data3 = user.NeedUpdatePassword
+			}
 		}
 	} else if form.Type == ResponseTypeDevice {
 		authCache, ok := object.DeviceAuthMap.LoadAndDelete(form.UserCode)
@@ -435,6 +454,55 @@ func checkMfaEnable(c *ApiController, user *object.User, organization *object.Or
 	}
 
 	return false
+}
+
+func getExistUserByBindingRule(providerItem *object.ProviderItem, application *object.Application, userInfo *idp.UserInfo) (user *object.User, err error) {
+	if providerItem.BindingRule == nil {
+		providerItem.BindingRule = &[]string{"Email", "Phone", "Name"}
+	}
+	if len(*providerItem.BindingRule) == 0 {
+		return nil, nil
+	}
+
+	for _, rule := range *providerItem.BindingRule {
+		// Find existing user with Email
+		if rule == "Email" {
+			user, err = object.GetUserByField(application.Organization, "email", userInfo.Email)
+			if err != nil {
+				return nil, err
+			}
+			if user != nil {
+				return user, nil
+			}
+		}
+
+		// Find existing user with phone number
+		if rule == "Phone" {
+			user, err = object.GetUserByField(application.Organization, "phone", userInfo.Phone)
+			if err != nil {
+				return nil, err
+			}
+			if user != nil {
+				return user, nil
+			}
+		}
+
+		// Try to find existing user by username (case-insensitive)
+		// This allows OAuth providers (e.g., Wecom) to automatically associate with
+		// existing users when usernames match, particularly useful for enterprise
+		// scenarios where signup is disabled and users already exist in Casdoor
+		if rule == "Name" {
+			user, err = object.GetUserByFields(application.Organization, userInfo.Username)
+			if err != nil {
+				return nil, err
+			}
+			if user != nil {
+				return user, nil
+			}
+		}
+	}
+
+	return user, nil
 }
 
 // Login ...
@@ -738,7 +806,11 @@ func (c *ApiController) Login() {
 			}
 		} else if provider.Category == "OAuth" || provider.Category == "Web3" {
 			// OAuth
-			idpInfo := object.FromProviderToIdpInfo(c.Ctx, provider)
+			idpInfo, err := object.FromProviderToIdpInfo(c.Ctx, provider)
+			if err != nil {
+				c.ResponseError(err.Error())
+				return
+			}
 			idpInfo.CodeVerifier = authForm.CodeVerifier
 			var idProvider idp.IdProvider
 			idProvider, err = idp.GetIdProvider(idpInfo, authForm.RedirectUri)
@@ -784,7 +856,7 @@ func (c *ApiController) Login() {
 					return
 				}
 				if !reg.MatchString(userInfo.Email) {
-					c.ResponseError(fmt.Sprintf(c.T("check:Email is invalid")))
+					c.ResponseError(c.T("check:Email is invalid"))
 				}
 			}
 		}
@@ -824,36 +896,10 @@ func (c *ApiController) Login() {
 				c.Ctx.Input.SetParam("recordUserId", user.GetId())
 			} else if provider.Category == "OAuth" || provider.Category == "Web3" || provider.Category == "SAML" {
 				// Sign up via OAuth
-				if application.EnableLinkWithEmail {
-					if userInfo.Email != "" {
-						// Find existing user with Email
-						user, err = object.GetUserByField(application.Organization, "email", userInfo.Email)
-						if err != nil {
-							c.ResponseError(err.Error())
-							return
-						}
-					}
-
-					if user == nil && userInfo.Phone != "" {
-						// Find existing user with phone number
-						user, err = object.GetUserByField(application.Organization, "phone", userInfo.Phone)
-						if err != nil {
-							c.ResponseError(err.Error())
-							return
-						}
-					}
-				}
-
-				// Try to find existing user by username (case-insensitive)
-				// This allows OAuth providers (e.g., Wecom) to automatically associate with
-				// existing users when usernames match, particularly useful for enterprise
-				// scenarios where signup is disabled and users already exist in Casdoor
-				if user == nil && userInfo.Username != "" {
-					user, err = object.GetUserByFields(application.Organization, userInfo.Username)
-					if err != nil {
-						c.ResponseError(err.Error())
-						return
-					}
+				user, err = getExistUserByBindingRule(providerItem, application, userInfo)
+				if err != nil {
+					c.ResponseError(err.Error())
+					return
 				}
 
 				if user == nil {
@@ -949,11 +995,13 @@ func (c *ApiController) Login() {
 						RegisterSource:    fmt.Sprintf("%s/%s", application.Organization, application.Name),
 					}
 
-					// Set group from invitation code if available, otherwise use provider's signup group
+					// Set group from invitation code if available, otherwise use provider's signup group or application's default group
 					if invitation != nil && invitation.SignupGroup != "" {
 						user.Groups = []string{invitation.SignupGroup}
 					} else if providerItem.SignupGroup != "" {
 						user.Groups = []string{providerItem.SignupGroup}
+					} else if application.DefaultGroup != "" {
+						user.Groups = []string{application.DefaultGroup}
 					}
 
 					var affected bool
@@ -1366,7 +1414,7 @@ func (c *ApiController) Callback() {
 	code := c.GetString("code")
 	state := c.GetString("state")
 
-	frontendCallbackUrl := fmt.Sprintf("/callback?code=%s&state=%s", code, state)
+	frontendCallbackUrl := fmt.Sprintf("/callback?code=%s&state=%s", url.QueryEscape(code), url.QueryEscape(state))
 	c.Ctx.Redirect(http.StatusFound, frontendCallbackUrl)
 }
 

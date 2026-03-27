@@ -26,7 +26,7 @@ import (
 	"github.com/beego/beego/v2/server/web/context"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/i18n"
-	"github.com/casdoor/casdoor/mcp"
+	"github.com/casdoor/casdoor/mcpself"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -75,7 +75,7 @@ func denyRequest(ctx *context.Context) {
 }
 
 func denyMcpRequest(ctx *context.Context) {
-	req := mcp.McpRequest{}
+	req := mcpself.McpRequest{}
 	err := json.Unmarshal(ctx.Input.RequestBody, &req)
 	if err != nil {
 		ctx.Output.SetStatus(http.StatusBadRequest)
@@ -88,11 +88,22 @@ func denyMcpRequest(ctx *context.Context) {
 		return
 	}
 
-	resp := mcp.BuildMcpResponse(req.ID, nil, &mcp.McpError{
+	resp := mcpself.BuildMcpResponse(req.ID, nil, &mcpself.McpError{
 		Code:    -32001,
 		Message: "Unauthorized",
 		Data:    T(ctx, "auth:Unauthorized operation"),
 	})
+
+	// Add WWW-Authenticate header per MCP Authorization spec (RFC 9728)
+	// Use the same logic as getOriginFromHost to determine the scheme
+	host := ctx.Request.Host
+	scheme := "https"
+	if !strings.Contains(host, ".") {
+		// localhost:8000 or computer-name:80
+		scheme = "http"
+	}
+	resourceMetadataUrl := fmt.Sprintf("%s://%s/.well-known/oauth-protected-resource", scheme, host)
+	ctx.Output.Header("WWW-Authenticate", fmt.Sprintf("Bearer realm=\"casdoor\", resource_metadata=\"%s\"", resourceMetadataUrl))
 
 	ctx.Output.SetStatus(http.StatusUnauthorized)
 	_ = ctx.Output.JSON(resp, true, false)
@@ -122,24 +133,6 @@ func getUsernameByClientIdSecret(ctx *context.Context) (string, error) {
 	}
 
 	return fmt.Sprintf("app/%s", application.Name), nil
-}
-
-func getUsernameByKeys(ctx *context.Context) (string, error) {
-	accessKey, accessSecret := getKeys(ctx)
-	user, err := object.GetUserByAccessKey(accessKey)
-	if err != nil {
-		return "", err
-	}
-
-	if user == nil {
-		return "", fmt.Errorf("user not found for access key: %s", accessKey)
-	}
-
-	if accessSecret != user.AccessSecret {
-		return "", fmt.Errorf("incorrect access secret for user: %s", user.Name)
-	}
-
-	return user.GetId(), nil
 }
 
 func getSessionUser(ctx *context.Context) string {

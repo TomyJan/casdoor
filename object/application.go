@@ -15,6 +15,7 @@
 package object
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -61,9 +62,17 @@ type SamlItem struct {
 }
 
 type JwtItem struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-	Type  string `json:"type"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Value    string `json:"value"`
+	Type     string `json:"type"`
+}
+
+type ScopeItem struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description"`
+	Tools       []string `json:"tools"` // MCP tools allowed by this scope
 }
 
 type Application struct {
@@ -72,6 +81,9 @@ type Application struct {
 	CreatedTime string `xorm:"varchar(100)" json:"createdTime"`
 
 	DisplayName                  string          `xorm:"varchar(100)" json:"displayName"`
+	Category                     string          `xorm:"varchar(20)" json:"category"`
+	Type                         string          `xorm:"varchar(20)" json:"type"`
+	Scopes                       []*ScopeItem    `xorm:"mediumtext" json:"scopes"`
 	Logo                         string          `xorm:"varchar(200)" json:"logo"`
 	Title                        string          `xorm:"varchar(100)" json:"title"`
 	Favicon                      string          `xorm:"varchar(200)" json:"favicon"`
@@ -114,6 +126,7 @@ type Application struct {
 
 	ClientId                string     `xorm:"varchar(100)" json:"clientId"`
 	ClientSecret            string     `xorm:"varchar(100)" json:"clientSecret"`
+	ClientCert              string     `xorm:"varchar(100)" json:"clientCert"`
 	RedirectUris            []string   `xorm:"varchar(1000)" json:"redirectUris"`
 	ForcedRedirectOrigin    string     `xorm:"varchar(100)" json:"forcedRedirectOrigin"`
 	TokenFormat             string     `xorm:"varchar(100)" json:"tokenFormat"`
@@ -143,6 +156,17 @@ type Application struct {
 	FailedSigninLimit      int `json:"failedSigninLimit"`
 	FailedSigninFrozenTime int `json:"failedSigninFrozenTime"`
 	CodeResendTimeout      int `json:"codeResendTimeout"`
+
+	CustomScopes []*ScopeDescription `xorm:"mediumtext" json:"customScopes"`
+
+	// Reverse proxy fields
+	Domain       string   `xorm:"varchar(100)" json:"domain"`
+	OtherDomains []string `xorm:"varchar(1000)" json:"otherDomains"`
+	UpstreamHost string   `xorm:"varchar(100)" json:"upstreamHost"`
+	SslMode      string   `xorm:"varchar(100)" json:"sslMode"`
+	SslCert      string   `xorm:"varchar(100)" json:"sslCert"`
+
+	CertObj *Cert `xorm:"-"`
 }
 
 func GetApplicationCount(owner, field, value string) (int64, error) {
@@ -635,7 +659,7 @@ func GetMaskedApplications(applications []*Application, userId string) []*Applic
 
 func GetAllowedApplications(applications []*Application, userId string, lang string) ([]*Application, error) {
 	if userId == "" {
-		return nil, fmt.Errorf(i18n.Translate(lang, "auth:Unauthorized operation"))
+		return nil, errors.New(i18n.Translate(lang, "auth:Unauthorized operation"))
 	}
 
 	if isUserIdGlobalAdmin(userId) {
@@ -647,7 +671,7 @@ func GetAllowedApplications(applications []*Application, userId string, lang str
 		return nil, err
 	}
 	if user == nil {
-		return nil, fmt.Errorf(i18n.Translate(lang, "auth:Unauthorized operation"))
+		return nil, errors.New(i18n.Translate(lang, "auth:Unauthorized operation"))
 	}
 
 	if user.IsAdmin {
@@ -669,6 +693,21 @@ func GetAllowedApplications(applications []*Application, userId string, lang str
 	return res, nil
 }
 
+func checkMultipleCaptchaProviders(application *Application, lang string) error {
+	var captchaProviders []string
+	for _, providerItem := range application.Providers {
+		if providerItem.Provider != nil && providerItem.Provider.Category == "Captcha" {
+			captchaProviders = append(captchaProviders, providerItem.Name)
+		}
+	}
+
+	if len(captchaProviders) > 1 {
+		return fmt.Errorf(i18n.Translate(lang, "general:Multiple captcha providers are not allowed in the same application: %s"), strings.Join(captchaProviders, ", "))
+	}
+
+	return nil
+}
+
 func UpdateApplication(id string, application *Application, isGlobalAdmin bool, lang string) (bool, error) {
 	owner, name, err := util.GetOwnerAndNameFromIdWithError(id)
 	if err != nil {
@@ -680,7 +719,7 @@ func UpdateApplication(id string, application *Application, isGlobalAdmin bool, 
 	}
 
 	if !isGlobalAdmin && oldApplication.Organization != application.Organization {
-		return false, fmt.Errorf(i18n.Translate(lang, "auth:Unauthorized operation"))
+		return false, errors.New(i18n.Translate(lang, "auth:Unauthorized operation"))
 	}
 
 	if name == "app-built-in" {
@@ -705,6 +744,16 @@ func UpdateApplication(id string, application *Application, isGlobalAdmin bool, 
 
 	if application.IsShared == true && application.Organization != "built-in" {
 		return false, fmt.Errorf("only applications belonging to built-in organization can be shared")
+	}
+
+	err = checkMultipleCaptchaProviders(application, lang)
+	if err != nil {
+		return false, err
+	}
+
+	err = validateCustomScopes(application.CustomScopes, lang)
+	if err != nil {
+		return false, err
 	}
 
 	for _, providerItem := range application.Providers {
@@ -758,6 +807,11 @@ func AddApplication(application *Application) (bool, error) {
 	}
 
 	err = extendApplicationWithSigninMethods(application)
+	if err != nil {
+		return false, err
+	}
+
+	err = validateCustomScopes(application.CustomScopes, "en")
 	if err != nil {
 		return false, err
 	}

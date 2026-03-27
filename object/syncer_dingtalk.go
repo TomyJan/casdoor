@@ -109,6 +109,21 @@ type DingtalkDeptListResp struct {
 	RequestId string `json:"request_id"`
 }
 
+type DingtalkDepartment struct {
+	DeptId          int64  `json:"dept_id"`
+	Name            string `json:"name"`
+	ParentId        int64  `json:"parent_id"`
+	CreateDeptGroup bool   `json:"create_dept_group"`
+	AutoAddUser     bool   `json:"auto_add_user"`
+}
+
+type DingtalkDeptDetailResp struct {
+	Errcode   int                 `json:"errcode"`
+	Errmsg    string              `json:"errmsg"`
+	Result    *DingtalkDepartment `json:"result"`
+	RequestId string              `json:"request_id"`
+}
+
 // getDingtalkAccessToken gets access token from DingTalk API
 func (p *DingtalkSyncerProvider) getDingtalkAccessToken() (string, error) {
 	// syncer.User should be the appKey
@@ -160,14 +175,18 @@ func (p *DingtalkSyncerProvider) getDingtalkAccessToken() (string, error) {
 	return tokenResp.AccessToken, nil
 }
 
-// getDingtalkDepartments gets all department IDs from DingTalk API
+// getDingtalkDepartments gets all department IDs from DingTalk API recursively
 func (p *DingtalkSyncerProvider) getDingtalkDepartments(accessToken string) ([]int64, error) {
+	return p.getDingtalkDepartmentsRecursive(accessToken, 1)
+}
+
+// getDingtalkDepartmentsRecursive recursively fetches all departments starting from parentDeptId
+func (p *DingtalkSyncerProvider) getDingtalkDepartmentsRecursive(accessToken string, parentDeptId int64) ([]int64, error) {
 	apiUrl := fmt.Sprintf("https://oapi.dingtalk.com/topapi/v2/department/listsub?access_token=%s",
 		url.QueryEscape(accessToken))
 
-	// Get root department (dept_id=1)
 	postData := map[string]interface{}{
-		"dept_id": 1,
+		"dept_id": parentDeptId,
 	}
 
 	data, err := p.postJSON(apiUrl, postData)
@@ -186,12 +205,47 @@ func (p *DingtalkSyncerProvider) getDingtalkDepartments(accessToken string) ([]i
 			deptResp.Errcode, deptResp.Errmsg)
 	}
 
-	deptIds := []int64{1} // Include root department
+	// Start with the parent department itself
+	deptIds := []int64{parentDeptId}
+
+	// Recursively fetch all child departments
 	for _, dept := range deptResp.Result {
-		deptIds = append(deptIds, dept.DeptId)
+		childDeptIds, err := p.getDingtalkDepartmentsRecursive(accessToken, dept.DeptId)
+		if err != nil {
+			return nil, err
+		}
+		deptIds = append(deptIds, childDeptIds...)
 	}
 
 	return deptIds, nil
+}
+
+// getDingtalkDepartmentDetails gets detailed department information
+func (p *DingtalkSyncerProvider) getDingtalkDepartmentDetails(accessToken string, deptId int64) (*DingtalkDepartment, error) {
+	apiUrl := fmt.Sprintf("https://oapi.dingtalk.com/topapi/v2/department/get?access_token=%s",
+		url.QueryEscape(accessToken))
+
+	postData := map[string]interface{}{
+		"dept_id": deptId,
+	}
+
+	data, err := p.postJSON(apiUrl, postData)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp DingtalkDeptDetailResp
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Errcode != 0 {
+		return nil, fmt.Errorf("failed to get department details for %d: errcode=%d, errmsg=%s",
+			deptId, resp.Errcode, resp.Errmsg)
+	}
+
+	return resp.Result, nil
 }
 
 // getDingtalkUsersFromDept gets users from a specific department
@@ -352,30 +406,67 @@ func (p *DingtalkSyncerProvider) getDingtalkUsers() ([]*OriginalUser, error) {
 	return originalUsers, nil
 }
 
+// getDingtalkUserFieldValue extracts a field value from DingtalkUser by field name
+func (p *DingtalkSyncerProvider) getDingtalkUserFieldValue(dingtalkUser *DingtalkUser, fieldName string) string {
+	switch fieldName {
+	case "userid":
+		return dingtalkUser.UserId
+	case "unionid":
+		return dingtalkUser.UnionId
+	case "name":
+		return dingtalkUser.Name
+	case "email":
+		return dingtalkUser.Email
+	case "mobile":
+		return dingtalkUser.Mobile
+	case "avatar":
+		return dingtalkUser.Avatar
+	case "title":
+		return dingtalkUser.Position
+	case "job_number":
+		return dingtalkUser.JobNumber
+	case "active":
+		// Invert the boolean because active=true means NOT forbidden
+		return util.BoolToString(!dingtalkUser.Active)
+	default:
+		return ""
+	}
+}
+
 // dingtalkUserToOriginalUser converts DingTalk user to Casdoor OriginalUser
 func (p *DingtalkSyncerProvider) dingtalkUserToOriginalUser(dingtalkUser *DingtalkUser) *OriginalUser {
-	// Use unionid as name to be consistent with OAuth provider
-	// Fallback to userId if unionid is not available
-	userName := dingtalkUser.UserId
-	if dingtalkUser.UnionId != "" {
-		userName = dingtalkUser.UnionId
-	}
-
 	user := &OriginalUser{
-		Id:          dingtalkUser.UserId,
-		Name:        userName,
-		DisplayName: dingtalkUser.Name,
-		Email:       dingtalkUser.Email,
-		Phone:       dingtalkUser.Mobile,
-		Avatar:      dingtalkUser.Avatar,
-		Title:       dingtalkUser.Position,
-		Address:     []string{},
-		Properties:  map[string]string{},
-		Groups:      []string{},
+		Address:    []string{},
+		Properties: map[string]string{},
+		Groups:     []string{},
+		DingTalk:   dingtalkUser.UserId, // Link DingTalk provider account
 	}
 
-	// Set IsForbidden based on active status (active=false means user is forbidden)
-	user.IsForbidden = !dingtalkUser.Active
+	// Apply TableColumns mapping if configured
+	if len(p.Syncer.TableColumns) > 0 {
+		for _, tableColumn := range p.Syncer.TableColumns {
+			value := p.getDingtalkUserFieldValue(dingtalkUser, tableColumn.Name)
+			p.Syncer.setUserByKeyValue(user, tableColumn.CasdoorName, value)
+		}
+	} else {
+		// Fallback to default mapping for backward compatibility
+		user.Id = dingtalkUser.UserId
+		user.Name = dingtalkUser.UserId
+		if dingtalkUser.UnionId != "" {
+			user.Name = dingtalkUser.UnionId
+		}
+		user.DisplayName = dingtalkUser.Name
+		user.Email = dingtalkUser.Email
+		user.Phone = dingtalkUser.Mobile
+		user.Avatar = dingtalkUser.Avatar
+		user.Title = dingtalkUser.Position
+		user.IsForbidden = !dingtalkUser.Active
+	}
+
+	// Add department IDs to Groups field
+	for _, deptId := range dingtalkUser.Department {
+		user.Groups = append(user.Groups, fmt.Sprintf("%d", deptId))
+	}
 
 	// Set CreatedTime to current time if not set
 	if user.CreatedTime == "" {
@@ -385,14 +476,72 @@ func (p *DingtalkSyncerProvider) dingtalkUserToOriginalUser(dingtalkUser *Dingta
 	return user
 }
 
-// GetOriginalGroups retrieves all groups from DingTalk (not implemented yet)
+// GetOriginalGroups retrieves all groups (departments) from DingTalk
 func (p *DingtalkSyncerProvider) GetOriginalGroups() ([]*OriginalGroup, error) {
-	// TODO: Implement DingTalk group sync
-	return []*OriginalGroup{}, nil
+	// Get access token
+	accessToken, err := p.getDingtalkAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get all department IDs
+	deptIds, err := p.getDingtalkDepartments(accessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get detailed information for each department
+	originalGroups := []*OriginalGroup{}
+	for _, deptId := range deptIds {
+		dept, err := p.getDingtalkDepartmentDetails(accessToken, deptId)
+		if err != nil {
+			// Log error but continue with other departments
+			fmt.Printf("Warning: failed to get details for department %d: %v\n", deptId, err)
+			continue
+		}
+
+		originalGroup := p.dingtalkDepartmentToOriginalGroup(dept)
+		originalGroups = append(originalGroups, originalGroup)
+	}
+
+	return originalGroups, nil
 }
 
-// GetOriginalUserGroups retrieves the group IDs that a user belongs to (not implemented yet)
+// dingtalkDepartmentToOriginalGroup converts DingTalk department to Casdoor OriginalGroup
+func (p *DingtalkSyncerProvider) dingtalkDepartmentToOriginalGroup(dept *DingtalkDepartment) *OriginalGroup {
+	// Convert department ID to string for group ID
+	deptIdStr := fmt.Sprintf("%d", dept.DeptId)
+
+	return &OriginalGroup{
+		Id:          deptIdStr,
+		Name:        deptIdStr,    // Use ID as name for uniqueness
+		DisplayName: dept.Name,    // Use actual name as display name
+		Description: "",           // DingTalk doesn't provide description
+		Type:        "department", // Mark as department type
+		Manager:     "",           // DingTalk doesn't provide manager in dept details
+		Email:       "",           // DingTalk doesn't provide email for departments
+	}
+}
+
+// GetOriginalUserGroups retrieves the group (department) IDs that a user belongs to
 func (p *DingtalkSyncerProvider) GetOriginalUserGroups(userId string) ([]string, error) {
-	// TODO: Implement DingTalk user group membership sync
-	return []string{}, nil
+	// Get access token
+	accessToken, err := p.getDingtalkAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get detailed user information which includes department list
+	user, err := p.getDingtalkUserDetails(accessToken, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert department IDs to strings
+	groupIds := []string{}
+	for _, deptId := range user.Department {
+		groupIds = append(groupIds, fmt.Sprintf("%d", deptId))
+	}
+
+	return groupIds, nil
 }

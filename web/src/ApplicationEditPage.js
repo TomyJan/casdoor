@@ -48,6 +48,7 @@ import ProviderTable from "./table/ProviderTable";
 import SigninMethodTable from "./table/SigninMethodTable";
 import SignupTable from "./table/SignupTable";
 import SamlAttributeTable from "./table/SamlAttributeTable";
+import ScopeTable from "./table/ScopeTable";
 import PromptPage from "./auth/PromptPage";
 import copy from "copy-to-clipboard";
 import ThemeEditor from "./common/theme/ThemeEditor";
@@ -58,6 +59,7 @@ import * as GroupBackend from "./backend/GroupBackend";
 import TokenAttributeTable from "./table/TokenAttributeTable";
 import {Content, Header} from "antd/es/layout/layout";
 import Sider from "antd/es/layout/Sider";
+import PaginateSelect from "./common/PaginateSelect";
 
 const {Option} = Select;
 
@@ -149,7 +151,6 @@ class ApplicationEditPage extends React.Component {
   UNSAFE_componentWillMount() {
     this.getApplication();
     this.getOrganizations();
-    this.getGroups();
   }
 
   getApplication() {
@@ -201,17 +202,6 @@ class ApplicationEditPage extends React.Component {
       });
   }
 
-  getGroups() {
-    GroupBackend.getGroups(this.state.owner)
-      .then((res) => {
-        if (res.status === "ok") {
-          this.setState({
-            groups: res.data,
-          });
-        }
-      });
-  }
-
   getCerts(application) {
     let owner = application.organization;
     if (application.isShared) {
@@ -256,6 +246,33 @@ class ApplicationEditPage extends React.Component {
       value = Setting.myParseInt(value);
     }
     return value;
+  }
+
+  trimCustomScopes(customScopes) {
+    if (!Array.isArray(customScopes)) {
+      return [];
+    }
+    return customScopes.map((item) => {
+      const scope = (item?.scope || "").trim();
+      const displayName = (item?.displayName || "").trim();
+      const description = (item?.description || "").trim();
+      return {
+        ...item,
+        scope: scope,
+        displayName: displayName,
+        description: description,
+      };
+    });
+  }
+
+  validateCustomScopes(customScopes) {
+    const trimmed = this.trimCustomScopes(customScopes);
+    for (const item of trimmed) {
+      if (!item || !item.scope || item.scope === "") {
+        return {ok: false, scopes: trimmed};
+      }
+    }
+    return {ok: true, scopes: trimmed};
   }
 
   updateApplicationField(key, value) {
@@ -316,6 +333,61 @@ class ApplicationEditPage extends React.Component {
               <Input value={this.state.application.displayName} onChange={e => {
                 this.updateApplicationField("displayName", e.target.value);
               }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("general:Category"), i18next.t("general:Category - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select
+                virtual={false}
+                style={{width: "100%"}}
+                value={this.state.application.category}
+                onChange={(value) => {
+                  this.updateApplicationField("category", value);
+                  if (value === "Agent") {
+                    this.updateApplicationField("type", "MCP");
+                  } else {
+                    this.updateApplicationField("type", "All");
+                  }
+                }}
+              >
+                <Option value="Default">Default</Option>
+                <Option value="Agent">Agent</Option>
+              </Select>
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("general:Type"), i18next.t("general:Type - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select
+                virtual={false}
+                style={{width: "100%"}}
+                value={this.state.application.type}
+                onChange={(value) => {
+                  this.updateApplicationField("type", value);
+                }}
+              >
+                {
+                  (this.state.application.category === "Agent") ? (
+                    <>
+                      <Option value="MCP">MCP</Option>
+                      <Option value="A2A">A2A</Option>
+                    </>
+                  ) : (
+                    <>
+                      <Option value="All">All</Option>
+                      <Option value="OIDC">OIDC</Option>
+                      <Option value="OAuth">OAuth</Option>
+                      <Option value="SAML">SAML</Option>
+                      <Option value="CAS">CAS</Option>
+                    </>
+                  )
+                }
+              </Select>
             </Col>
           </Row>
           <Row style={{marginTop: "20px"}} >
@@ -461,141 +533,6 @@ class ApplicationEditPage extends React.Component {
       )}
       {this.state.activeMenuKey === "authentication" && (
         <React.Fragment>
-          <Row style={{marginTop: "10px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("provider:Client ID"), i18next.t("provider:Client ID - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Input value={this.state.application.clientId} onChange={e => {
-                this.updateApplicationField("clientId", e.target.value);
-              }} />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "10px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("provider:Client secret"), i18next.t("provider:Client secret - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Input value={this.state.application.clientSecret} onChange={e => {
-                this.updateApplicationField("clientSecret", e.target.value);
-              }} />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Redirect URLs"), i18next.t("application:Redirect URLs - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <UrlTable
-                title={i18next.t("application:Redirect URLs")}
-                table={this.state.application.redirectUris}
-                onUpdateTable={(value) => {this.updateApplicationField("redirectUris", value);}}
-              />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Forced redirect origin"), i18next.t("general:Forced redirect origin - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Input prefix={<LinkOutlined />} value={this.state.application.forcedRedirectOrigin} onChange={e => {
-                this.updateApplicationField("forcedRedirectOrigin", e.target.value);
-              }} />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Grant types"), i18next.t("application:Grant types - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Select virtual={false} mode="multiple" style={{width: "100%"}}
-                value={this.state.application.grantTypes}
-                onChange={(value => {
-                  this.updateApplicationField("grantTypes", value);
-                })} >
-                {
-                  [
-                    {id: "authorization_code", name: "Authorization Code"},
-                    {id: "password", name: "Password"},
-                    {id: "client_credentials", name: "Client Credentials"},
-                    {id: "token", name: "Token"},
-                    {id: "id_token", name: "ID Token"},
-                    {id: "refresh_token", name: "Refresh Token"},
-                    {id: "urn:ietf:params:oauth:grant-type:device_code", name: "Device Code"},
-                  ].map((item, index) => <Option key={index} value={item.id}>{item.name}</Option>)
-                }
-              </Select>
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Token format"), i18next.t("application:Token format - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Select virtual={false} style={{width: "100%"}} value={this.state.application.tokenFormat} onChange={(value => {this.updateApplicationField("tokenFormat", value);})}
-                options={["JWT", "JWT-Empty", "JWT-Custom", "JWT-Standard"].map((item) => Setting.getOption(item, item))}
-              />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Token signing method"), i18next.t("application:Token signing method - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Select virtual={false} style={{width: "100%"}} value={this.state.application.tokenSigningMethod === "" ? "RS256" : this.state.application.tokenSigningMethod} onChange={(value => {this.updateApplicationField("tokenSigningMethod", value);})}
-                options={["RS256", "RS512", "ES256", "ES512", "ES384"].map((item) => Setting.getOption(item, item))}
-              />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Token fields"), i18next.t("application:Token fields - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <Select virtual={false} disabled={this.state.application.tokenFormat !== "JWT-Custom"} mode="tags" showSearch style={{width: "100%"}} value={this.state.application.tokenFields} onChange={(value => {this.updateApplicationField("tokenFields", value);})}>
-                <Option key={"signinMethod"} value={"signinMethod"}>{"SigninMethod"}</Option>
-                <Option key={"provider"} value={"provider"}>{"Provider"}</Option>
-                {
-                  [...Setting.getUserCommonFields(), "permissionNames"].map((item, index) => <Option key={index} value={item}>{item}</Option>)
-                }
-              </Select>
-            </Col>
-          </Row>
-          {
-            this.state.application.tokenFormat === "JWT-Custom" ? (<Row style={{marginTop: "20px"}} >
-              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {Setting.getLabel(i18next.t("general:Token attributes"), i18next.t("general:Token attributes - Tooltip"))} :
-              </Col>
-              <Col span={22} >
-                <TokenAttributeTable
-                  title={i18next.t("general:Token attributes")}
-                  table={this.state.application.tokenAttributes}
-                  application={this.state.application}
-                  onUpdateTable={(value) => {this.updateApplicationField("tokenAttributes", value);}}
-                />
-              </Col>
-            </Row>) : null
-          }
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Token expire"), i18next.t("application:Token expire - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <InputNumber style={{width: "150px"}} value={this.state.application.expireInHours} min={0.01} step={1} precision={2} addonAfter="Hours" onChange={value => {
-                this.updateApplicationField("expireInHours", value);
-              }} />
-            </Col>
-          </Row>
-          <Row style={{marginTop: "20px"}} >
-            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("application:Refresh token expire"), i18next.t("application:Refresh token expire - Tooltip"))} :
-            </Col>
-            <Col span={21} >
-              <InputNumber style={{width: "150px"}} value={this.state.application.refreshExpireInHours} min={0.01} step={1} precision={2} addonAfter="Hours" onChange={value => {
-                this.updateApplicationField("refreshExpireInHours", value);
-              }} />
-            </Col>
-          </Row>
           <Row style={{marginTop: "20px"}} >
             <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
               {Setting.getLabel(i18next.t("application:Cookie expire"), i18next.t("application:Cookie expire - Tooltip"))} :
@@ -611,24 +548,30 @@ class ApplicationEditPage extends React.Component {
               {Setting.getLabel(i18next.t("ldap:Default group"), i18next.t("ldap:Default group - Tooltip"))} :
             </Col>
             <Col span={21}>
-              <Select virtual={false} style={{width: "100%"}} value={this.state.application.defaultGroup ?? []} onChange={(value => {
-                this.updateApplicationField("defaultGroup", value);
-              })}
-              >
-                <Option key={""} value={""}>
+              <PaginateSelect
+                virtual
+                style={{width: "100%"}}
+                allowClear
+                placeholder={i18next.t("general:Default")}
+                value={this.state.application.defaultGroup || undefined}
+                fetchPage={GroupBackend.getGroups}
+                buildFetchArgs={({page, pageSize, searchText}) => {
+                  const field = searchText ? "name" : "";
+                  return [this.state.owner, false, page, pageSize, field, searchText, "", ""];
+                }}
+                reloadKey={this.state.owner}
+                optionMapper={(group) => Setting.getOption(
                   <Space>
-                    {i18next.t("general:Default")}
-                  </Space>
-                </Option>
-                {
-                  this.state.groups?.map((group) => <Option key={group.name} value={`${group.owner}/${group.name}`}>
-                    <Space>
-                      {group.type === "Physical" ? <UsergroupAddOutlined /> : <HolderOutlined />}
-                      {group.displayName}
-                    </Space>
-                  </Option>)
-                }
-              </Select>
+                    {group.type === "Physical" ? <UsergroupAddOutlined /> : <HolderOutlined />}
+                    {group.displayName}
+                  </Space>,
+                  `${group.owner}/${group.name}`
+                )}
+                filterOption={false}
+                onChange={(value) => {
+                  this.updateApplicationField("defaultGroup", value || "");
+                }}
+              />
             </Col>
           </Row>
           <Row style={{marginTop: "20px"}} >
@@ -740,7 +683,167 @@ class ApplicationEditPage extends React.Component {
               }} />
             </Col>
           </Row>
+        </React.Fragment>
+      )}
+      {this.state.activeMenuKey === "oidc-oauth" && (
+        <React.Fragment>
+          <Row style={{marginTop: "10px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("provider:Client ID"), i18next.t("provider:Client ID - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Input value={this.state.application.clientId} onChange={e => {
+                this.updateApplicationField("clientId", e.target.value);
+              }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "10px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("provider:Client secret"), i18next.t("provider:Client secret - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Input value={this.state.application.clientSecret} onChange={e => {
+                this.updateApplicationField("clientSecret", e.target.value);
+              }} />
+            </Col>
+          </Row>
           <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Redirect URLs"), i18next.t("application:Redirect URLs - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <UrlTable
+                title={i18next.t("application:Redirect URLs")}
+                table={this.state.application.redirectUris}
+                onUpdateTable={(value) => {this.updateApplicationField("redirectUris", value);}}
+              />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Forced redirect origin"), i18next.t("general:Forced redirect origin - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Input prefix={<LinkOutlined />} value={this.state.application.forcedRedirectOrigin} onChange={e => {
+                this.updateApplicationField("forcedRedirectOrigin", e.target.value);
+              }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Grant types"), i18next.t("application:Grant types - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} mode="multiple" style={{width: "100%"}}
+                value={this.state.application.grantTypes}
+                onChange={(value => {
+                  this.updateApplicationField("grantTypes", value);
+                })} >
+                {
+                  [
+                    {id: "authorization_code", name: "Authorization Code"},
+                    {id: "password", name: "Password"},
+                    {id: "client_credentials", name: "Client Credentials"},
+                    {id: "token", name: "Token"},
+                    {id: "id_token", name: "ID Token"},
+                    {id: "refresh_token", name: "Refresh Token"},
+                    {id: "urn:ietf:params:oauth:grant-type:device_code", name: "Device Code"},
+                    {id: "urn:ietf:params:oauth:grant-type:jwt-bearer", name: "JWT Bearer"},
+                  ].map((item, index) => <Option key={index} value={item.id}>{item.name}</Option>)
+                }
+              </Select>
+            </Col>
+          </Row>
+          {
+            (this.state.application.category === "Agent") ? (
+              <Row style={{marginTop: "20px"}} >
+                <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+                  {Setting.getLabel(i18next.t("general:Scopes"), i18next.t("general:Scopes - Tooltip"))} :
+                </Col>
+                <Col span={21} >
+                  <ScopeTable
+                    title={i18next.t("general:Scopes")}
+                    table={this.state.application.scopes}
+                    onUpdateTable={(value) => {this.updateApplicationField("scopes", value);}}
+                  />
+                </Col>
+              </Row>
+            ) : null
+          }
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Token format"), i18next.t("application:Token format - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} style={{width: "100%"}} value={this.state.application.tokenFormat} onChange={(value => {this.updateApplicationField("tokenFormat", value);})}
+                options={["JWT", "JWT-Empty", "JWT-Custom", "JWT-Standard"].map((item) => Setting.getOption(item, item))}
+              />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Token signing method"), i18next.t("application:Token signing method - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} style={{width: "100%"}} value={this.state.application.tokenSigningMethod === "" ? "RS256" : this.state.application.tokenSigningMethod} onChange={(value => {this.updateApplicationField("tokenSigningMethod", value);})}
+                options={["RS256", "RS512", "ES256", "ES512", "ES384"].map((item) => Setting.getOption(item, item))}
+              />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Token fields"), i18next.t("application:Token fields - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} disabled={this.state.application.tokenFormat !== "JWT-Custom"} mode="tags" showSearch style={{width: "100%"}} value={this.state.application.tokenFields} onChange={(value => {this.updateApplicationField("tokenFields", value);})}>
+                <Option key={"signinMethod"} value={"signinMethod"}>{"SigninMethod"}</Option>
+                <Option key={"provider"} value={"provider"}>{"Provider"}</Option>
+                {
+                  [...Setting.getUserCommonFields(), "permissionNames"].map((item, index) => <Option key={index} value={item}>{item}</Option>)
+                }
+              </Select>
+            </Col>
+          </Row>
+          {
+            this.state.application.tokenFormat === "JWT-Custom" ? (<Row style={{marginTop: "20px"}} >
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+                {Setting.getLabel(i18next.t("general:Token attributes"), i18next.t("general:Token attributes - Tooltip"))} :
+              </Col>
+              <Col span={22} >
+                <TokenAttributeTable
+                  title={i18next.t("general:Token attributes")}
+                  table={this.state.application.tokenAttributes}
+                  application={this.state.application}
+                  onUpdateTable={(value) => {this.updateApplicationField("tokenAttributes", value);}}
+                />
+              </Col>
+            </Row>) : null
+          }
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Token expire"), i18next.t("application:Token expire - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <InputNumber style={{width: "150px"}} value={this.state.application.expireInHours} min={0.01} step={1} precision={2} addonAfter="Hours" onChange={value => {
+                this.updateApplicationField("expireInHours", value);
+              }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Refresh token expire"), i18next.t("application:Refresh token expire - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <InputNumber style={{width: "150px"}} value={this.state.application.refreshExpireInHours} min={0.01} step={1} precision={2} addonAfter="Hours" onChange={value => {
+                this.updateApplicationField("refreshExpireInHours", value);
+              }} />
+            </Col>
+          </Row>
+        </React.Fragment>
+      )}
+      {this.state.activeMenuKey === "saml" && (
+        <React.Fragment>
+          <Row style={{marginTop: "10px"}} >
             <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
               {Setting.getLabel(i18next.t("application:SAML reply URL"), i18next.t("application:Redirect URL (Assertion Consumer Service POST Binding URL) - Tooltip"))} :
             </Col>
@@ -870,11 +973,11 @@ class ApplicationEditPage extends React.Component {
         <React.Fragment>
           <Row style={{marginTop: "10px"}} >
             <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("general:Providers"), i18next.t("general:Providers - Tooltip"))} :
+              {Setting.getLabel(i18next.t("application:Providers"), i18next.t("general:Providers - Tooltip"))} :
             </Col>
             <Col span={21} >
               <ProviderTable
-                title={i18next.t("general:Providers")}
+                title={i18next.t("application:Providers")}
                 table={this.state.application.providers}
                 providers={this.state.providers}
                 application={this.state.application}
@@ -1241,10 +1344,22 @@ class ApplicationEditPage extends React.Component {
         <React.Fragment>
           <Row style={{marginTop: "20px"}} >
             <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
-              {Setting.getLabel(i18next.t("general:Cert"), i18next.t("general:Cert - Tooltip"))} :
+              {Setting.getLabel(i18next.t("application:Token cert"), i18next.t("application:Token cert - Tooltip"))} :
             </Col>
             <Col span={21} >
               <Select virtual={false} style={{width: "100%"}} value={this.state.application.cert} onChange={(value => {this.updateApplicationField("cert", value);})}>
+                {
+                  this.state.certs.map((cert, index) => <Option key={index} value={cert.name}>{cert.name}</Option>)
+                }
+              </Select>
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Client cert"), i18next.t("application:Client cert - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} style={{width: "100%"}} value={this.state.application.clientCert} onChange={(value => {this.updateApplicationField("clientCert", value);})}>
                 {
                   this.state.certs.map((cert, index) => <Option key={index} value={cert.name}>{cert.name}</Option>)
                 }
@@ -1286,7 +1401,7 @@ class ApplicationEditPage extends React.Component {
               {Setting.getLabel(i18next.t("general:IP whitelist"), i18next.t("general:IP whitelist - Tooltip"))} :
             </Col>
             <Col span={21} >
-              <Input placeholder = {this.state.application.organizationObj?.ipWhitelist} value={this.state.application.ipWhitelist} onChange={e => {
+              <Input placeholder={this.state.application.organizationObj?.ipWhitelist} value={this.state.application.ipWhitelist} onChange={e => {
                 this.updateApplicationField("ipWhitelist", e.target.value);
               }} />
             </Col>
@@ -1306,6 +1421,68 @@ class ApplicationEditPage extends React.Component {
             </Col>
           </Row>
         </React.Fragment>
+      )}
+      {this.state.activeMenuKey === "reverse-proxy" && (
+        <React.Fragment>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("provider:Domain"), i18next.t("provider:Domain - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Input value={this.state.application.domain} placeholder="e.g., blog.example.com" onChange={e => {
+                this.updateApplicationField("domain", e.target.value);
+              }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Other domains"), i18next.t("application:Other domains - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <UrlTable
+                title={i18next.t("application:Other domains")}
+                table={this.state.application.otherDomains}
+                onUpdateTable={(value) => {this.updateApplicationField("otherDomains", value);}}
+              />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:Upstream host"), i18next.t("application:Upstream host - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Input value={this.state.application.upstreamHost} placeholder="e.g., localhost:8080 or 192.168.1.100:3000" onChange={e => {
+                this.updateApplicationField("upstreamHost", e.target.value);
+              }} />
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("provider:SSL mode"), i18next.t("provider:SSL mode - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} style={{width: "100%"}} value={this.state.application.sslMode} onChange={(value => {this.updateApplicationField("sslMode", value);})}>
+                <Option value="">{i18next.t("general:None")}</Option>
+                <Option value="HTTP">HTTP</Option>
+                <Option value="HTTPS and HTTP">HTTPS and HTTP</Option>
+                <Option value="HTTPS Only">HTTPS Only</Option>
+              </Select>
+            </Col>
+          </Row>
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 3}>
+              {Setting.getLabel(i18next.t("application:SSL cert"), i18next.t("application:SSL cert - Tooltip"))} :
+            </Col>
+            <Col span={21} >
+              <Select virtual={false} style={{width: "100%"}} value={this.state.application.sslCert} onChange={(value => {this.updateApplicationField("sslCert", value);})}>
+                <Option value="">{i18next.t("general:None")}</Option>
+                {
+                  this.state.certs.map((cert, index) => <Option key={index} value={cert.name}>{cert.name}</Option>)
+                }
+              </Select>
+            </Col>
+          </Row>
+        </React.Fragment>
       )}</>;
   }
 
@@ -1318,11 +1495,12 @@ class ApplicationEditPage extends React.Component {
           <Button style={{marginLeft: "20px"}} type="primary" onClick={() => this.submitApplicationEdit(true)}>{i18next.t("general:Save & Exit")}</Button>
           {this.state.mode === "add" ? <Button style={{marginLeft: "20px"}} onClick={() => this.deleteApplication()}>{i18next.t("general:Cancel")}</Button> : null}
         </div>
-      } style={(Setting.isMobile()) ? {margin: "5px"} : {}} type="inner">
-        <Layout style={{background: "inherit"}}>
+      } style={{margin: (Setting.isMobile()) ? "5px" : {}, height: "calc(100vh - 145px - 48px)", overflow: "hidden"}}
+      styles={{body: {height: "100%"}}} type="inner">
+        <Layout style={{background: "inherit", height: "100%"}}>
           {
             this.state.menuMode === "horizontal" || !this.state.menuMode ? (
-              <Header style={{background: "inherit", padding: "0px"}}>
+              <Header style={{background: "inherit", padding: "0px", position: "sticky", top: 0, height: 38, minHeight: 38}}>
                 <div className="demo-logo" />
                 <Tabs
                   onChange={(key) => {
@@ -1331,18 +1509,22 @@ class ApplicationEditPage extends React.Component {
                   }}
                   type="card"
                   activeKey={this.state.activeMenuKey}
+                  tabBarStyle={{marginBottom: 0}}
                   items={[
                     {label: i18next.t("application:Basic"), key: "basic"},
                     {label: i18next.t("application:Authentication"), key: "authentication"},
+                    {label: "OIDC/OAuth", key: "oidc-oauth"},
+                    {label: "SAML", key: "saml"},
                     {label: i18next.t("application:Providers"), key: "providers"},
                     {label: i18next.t("application:UI Customization"), key: "ui-customization"},
                     {label: i18next.t("application:Security"), key: "security"},
+                    {label: i18next.t("application:Reverse Proxy"), key: "reverse-proxy"},
                   ]}
                 />
               </Header>
             ) : null
           }
-          <Layout style={{background: "inherit", maxHeight: "calc(70vh - 70px)", overflow: "auto"}}>
+          <Layout style={{background: "inherit", overflow: "auto"}}>
             {
               this.state.menuMode === "vertical" ? (
                 <Sider width={200} style={{background: "inherit", position: "sticky", top: 0}}>
@@ -1357,13 +1539,19 @@ class ApplicationEditPage extends React.Component {
                   >
                     <Menu.Item key="basic">{i18next.t("application:Basic")}</Menu.Item>
                     <Menu.Item key="authentication">{i18next.t("application:Authentication")}</Menu.Item>
+                    <Menu.Item key="oidc-oauth">OIDC/OAuth</Menu.Item>
+                    <Menu.Item key="saml">SAML</Menu.Item>
                     <Menu.Item key="providers">{i18next.t("application:Providers")}</Menu.Item>
                     <Menu.Item key="ui-customization">{i18next.t("application:UI Customization")}</Menu.Item>
                     <Menu.Item key="security">{i18next.t("application:Security")}</Menu.Item>
+                    <Menu.Item key="reverse-proxy">{i18next.t("application:Reverse Proxy")}</Menu.Item>
                   </Menu>
                 </Sider>) : null
             }
-            <Content style={{padding: "15px"}}>
+            <Content style={{padding: "15px",
+              overflowY: "auto",
+              height: "100%",
+              paddingBottom: "80px"}}>
               {this.renderApplicationForm()}
             </Content>
           </Layout>
@@ -1415,11 +1603,11 @@ class ApplicationEditPage extends React.Component {
               {
                 Setting.isPasswordEnabled(this.state.application) ? (
                   <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
-                    <SignupPage application={this.state.application} preview = "auto" />
+                    <SignupPage application={this.state.application} preview="auto" />
                   </div>
                 ) : (
                   <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
-                    <LoginPage type={"login"} mode={"signup"} application={this.state.application} preview = "auto" />
+                    <LoginPage type={"login"} mode={"signup"} application={this.state.application} preview="auto" />
                   </div>
                 )
               }
@@ -1445,7 +1633,7 @@ class ApplicationEditPage extends React.Component {
           }}>
             <div style={{position: "relative", width: previewWidth, border: "1px solid rgb(217,217,217)", boxShadow: "10px 10px 5px #888888", overflow: "auto"}}>
               <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
-                <LoginPage type={"login"} mode={"signin"} application={this.state.application} preview = "auto" />
+                <LoginPage type={"login"} mode={"signin"} application={this.state.application} preview="auto" />
               </div>
               <div style={{overflow: "auto", ...maskStyle}} />
             </div>
@@ -1489,6 +1677,12 @@ class ApplicationEditPage extends React.Component {
     const application = Setting.deepCopy(this.state.application);
     application.providers = application.providers?.filter(provider => this.state.providers.map(provider => provider.name).includes(provider.name));
     application.signinMethods = application.signinMethods?.filter(signinMethod => ["Password", "Verification code", "WebAuthn", "LDAP", "Face ID", "WeChat"].includes(signinMethod.name));
+    const customScopeValidation = this.validateCustomScopes(application.customScopes);
+    application.customScopes = customScopeValidation.scopes;
+    if (!customScopeValidation.ok) {
+      Setting.showMessage("error", `${i18next.t("general:Name")}: ${i18next.t("provider:This field is required")}`);
+      return;
+    }
 
     ApplicationBackend.updateApplication("admin", this.state.applicationName, application)
       .then((res) => {

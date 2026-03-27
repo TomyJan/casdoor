@@ -18,6 +18,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net/url"
+	"regexp"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,6 +95,26 @@ type DeviceAuthResponse struct {
 	Interval        int    `json:"interval"`
 }
 
+// validateResourceURI validates that the resource parameter is a valid absolute URI
+// according to RFC 8707 Section 2
+func validateResourceURI(resource string) error {
+	if resource == "" {
+		return nil // empty resource is allowed (backward compatibility)
+	}
+
+	parsedURL, err := url.Parse(resource)
+	if err != nil {
+		return fmt.Errorf("resource must be a valid URI")
+	}
+
+	// RFC 8707: The resource parameter must be an absolute URI
+	if !parsedURL.IsAbs() {
+		return fmt.Errorf("resource must be an absolute URI")
+	}
+
+	return nil
+}
+
 func ExpireTokenByAccessToken(accessToken string) (bool, *Application, *Token, error) {
 	token, err := GetTokenByAccessToken(accessToken)
 	if err != nil {
@@ -132,12 +156,16 @@ func CheckOAuthLogin(clientId string, responseType string, redirectUri string, s
 		return fmt.Sprintf(i18n.Translate(lang, "token:Redirect URI: %s doesn't exist in the allowed Redirect URI list"), redirectUri), application, nil
 	}
 
+	if !IsScopeValid(scope, application) {
+		return i18n.Translate(lang, "token:Invalid scope"), application, nil
+	}
+
 	// Mask application for /api/get-app-login
 	application.ClientSecret = ""
 	return "", application, nil
 }
 
-func GetOAuthCode(userId string, clientId string, provider string, signinMethod string, responseType string, redirectUri string, scope string, state string, nonce string, challenge string, host string, lang string) (*Code, error) {
+func GetOAuthCode(userId string, clientId string, provider string, signinMethod string, responseType string, redirectUri string, scope string, state string, nonce string, challenge string, resource string, host string, lang string) (*Code, error) {
 	user, err := GetUser(userId)
 	if err != nil {
 		return nil, err
@@ -168,11 +196,29 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 		}, nil
 	}
 
+	// Expand regex/wildcard scopes to concrete scope names.
+	expandedScope, ok := IsScopeValidAndExpand(scope, application)
+	if !ok {
+		return &Code{
+			Message: i18n.Translate(lang, "token:Invalid scope"),
+			Code:    "",
+		}, nil
+	}
+	scope = expandedScope
+
+	// Validate resource parameter (RFC 8707)
+	if err := validateResourceURI(resource); err != nil {
+		return &Code{
+			Message: err.Error(),
+			Code:    "",
+		}, nil
+	}
+
 	err = ExtendUserWithRolesAndPermissions(user)
 	if err != nil {
 		return nil, err
 	}
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, provider, signinMethod, nonce, scope, host)
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, provider, signinMethod, nonce, scope, resource, host)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +243,7 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 		CodeChallenge: challenge,
 		CodeIsUsed:    false,
 		CodeExpireIn:  time.Now().Add(time.Minute * 5).Unix(),
+		Resource:      resource,
 	}
 	_, err = AddToken(token)
 	if err != nil {
@@ -209,10 +256,33 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 	}, nil
 }
 
-func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, nonce string, username string, password string, host string, refreshToken string, tag string, avatar string, lang string) (interface{}, error) {
-	application, err := GetApplicationByClientId(clientId)
-	if err != nil {
-		return nil, err
+func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, nonce string, username string, password string, host string, refreshToken string, tag string, avatar string, lang string, subjectToken string, subjectTokenType string, assertion string, clientAssertion string, clientAssertionType string, audience string, resource string) (interface{}, error) {
+	var (
+		application *Application
+		err         error
+		ok          bool
+	)
+
+	if clientAssertionType == "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		ok, application, err = ValidateClientAssertion(clientAssertion, host)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok || application == nil {
+			return &TokenError{
+				Error:            InvalidClient,
+				ErrorDescription: "client_assertion is invalid",
+			}, nil
+		}
+
+		clientSecret = application.ClientSecret
+		clientId = application.ClientId
+	} else {
+		application, err = GetApplicationByClientId(clientId)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if application == nil {
@@ -235,17 +305,21 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 	var tokenError *TokenError
 	switch grantType {
 	case "authorization_code": // Authorization Code Grant
-		token, tokenError, err = GetAuthorizationCodeToken(application, clientSecret, code, verifier)
+		token, tokenError, err = GetAuthorizationCodeToken(application, clientSecret, code, verifier, resource)
 	case "password": //	Resource Owner Password Credentials Grant
 		token, tokenError, err = GetPasswordToken(application, username, password, scope, host)
 	case "client_credentials": // Client Credentials Grant
 		token, tokenError, err = GetClientCredentialsToken(application, clientSecret, scope, host)
 	case "token", "id_token": // Implicit Grant
 		token, tokenError, err = GetImplicitToken(application, username, scope, nonce, host)
+	case "urn:ietf:params:oauth:grant-type:jwt-bearer":
+		token, tokenError, err = GetJwtBearerToken(application, assertion, scope, nonce, host)
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		token, tokenError, err = GetImplicitToken(application, username, scope, nonce, host)
+	case "urn:ietf:params:oauth:grant-type:token-exchange": // Token Exchange Grant (RFC 8693)
+		token, tokenError, err = GetTokenExchangeToken(application, clientSecret, subjectToken, subjectTokenType, audience, scope, host)
 	case "refresh_token":
-		refreshToken2, err := RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
+		refreshToken2, err := RefreshToken(application, grantType, refreshToken, scope, clientId, clientSecret, host)
 		if err != nil {
 			return nil, err
 		}
@@ -287,7 +361,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 	return tokenWrapper, nil
 }
 
-func RefreshToken(grantType string, refreshToken string, scope string, clientId string, clientSecret string, host string) (interface{}, error) {
+func RefreshToken(application *Application, grantType string, refreshToken string, scope string, clientId string, clientSecret string, host string) (interface{}, error) {
 	// check parameters
 	if grantType != "refresh_token" {
 		return &TokenError{
@@ -295,16 +369,20 @@ func RefreshToken(grantType string, refreshToken string, scope string, clientId 
 			ErrorDescription: "grant_type should be refresh_token",
 		}, nil
 	}
-	application, err := GetApplicationByClientId(clientId)
-	if err != nil {
-		return nil, err
-	}
 
+	var err error
 	if application == nil {
-		return &TokenError{
-			Error:            InvalidClient,
-			ErrorDescription: "client_id is invalid",
-		}, nil
+		application, err = GetApplicationByClientId(clientId)
+		if err != nil {
+			return nil, err
+		}
+
+		if application == nil {
+			return &TokenError{
+				Error:            InvalidClient,
+				ErrorDescription: "client_id is invalid",
+			}, nil
+		}
 	}
 
 	if clientSecret != "" && application.ClientSecret != clientSecret {
@@ -388,7 +466,7 @@ func RefreshToken(grantType string, refreshToken string, scope string, clientId 
 		return nil, err
 	}
 
-	newAccessToken, newRefreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, host)
+	newAccessToken, newRefreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, "", host)
 	if err != nil {
 		return &TokenError{
 			Error:            EndpointError,
@@ -453,6 +531,81 @@ func IsGrantTypeValid(method string, grantTypes []string) bool {
 	return false
 }
 
+// isRegexScope returns true if the scope string contains regex metacharacters.
+func isRegexScope(scope string) bool {
+	return strings.ContainsAny(scope, ".*+?^${}()|[]\\")
+}
+
+// IsScopeValidAndExpand expands any regex patterns in the space-separated scope string
+// against the application's configured scopes. Literal scopes are kept as-is
+// after verifying they exist in the allowed list. Regex scopes are matched
+// against every allowed scope name; all matches replace the pattern.
+// If the application has no defined scopes, the original scope string is
+// returned unchanged (backward-compatible behaviour).
+// Returns the expanded scope string and whether the scope is valid.
+func IsScopeValidAndExpand(scope string, application *Application) (string, bool) {
+	if len(application.Scopes) == 0 || scope == "" {
+		return scope, true
+	}
+
+	allowedNames := make([]string, 0, len(application.Scopes))
+	allowedSet := make(map[string]bool, len(application.Scopes))
+	for _, s := range application.Scopes {
+		allowedNames = append(allowedNames, s.Name)
+		allowedSet[s.Name] = true
+	}
+
+	seen := make(map[string]bool)
+	var expanded []string
+
+	for _, s := range strings.Fields(scope) {
+		// Try exact match first.
+		if allowedSet[s] {
+			if !seen[s] {
+				seen[s] = true
+				expanded = append(expanded, s)
+			}
+			continue
+		}
+
+		// Not an exact match – if it looks like a regex, try pattern matching.
+		if !isRegexScope(s) {
+			return "", false
+		}
+
+		// Treat as regex pattern – must be a valid regex and match ≥ 1 scope.
+		re, err := regexp.Compile("^" + s + "$")
+		if err != nil {
+			return "", false
+		}
+
+		matched := false
+		for _, name := range allowedNames {
+			if re.MatchString(name) {
+				matched = true
+				if !seen[name] {
+					seen[name] = true
+					expanded = append(expanded, name)
+				}
+			}
+		}
+		if !matched {
+			return "", false
+		}
+	}
+
+	return strings.Join(expanded, " "), true
+}
+
+// IsScopeValid checks whether all space-separated scopes in the scope string
+// are defined in the application's Scopes list (including regex expansion).
+// If the application has no defined scopes, every scope is considered valid
+// (backward-compatible behaviour).
+func IsScopeValid(scope string, application *Application) bool {
+	_, ok := IsScopeValidAndExpand(scope, application)
+	return ok
+}
+
 // createGuestUserToken creates a new guest user and returns a token for them
 func createGuestUserToken(application *Application, clientSecret string, verifier string) (*Token, *TokenError, error) {
 	// Verify client secret if provided
@@ -493,12 +646,19 @@ func createGuestUserToken(application *Application, clientSecret string, verifie
 		}, nil
 	}
 
+	// Generate a unique user ID within the confines of the application
+	newUserId, idErr := GenerateIdForNewUser(application)
+	if idErr != nil {
+		// If we fail to generate a unique user ID, we can fallback to a random ID
+		newUserId = util.GenerateId()
+	}
+
 	// Create the guest user
 	guestUser := &User{
 		Owner:             application.Organization,
 		Name:              guestUsername,
 		CreatedTime:       util.GetCurrentTime(),
-		Id:                util.GenerateId(),
+		Id:                newUserId,
 		Type:              "normal-user",
 		Password:          guestPassword,
 		Tag:               "guest-user",
@@ -542,7 +702,7 @@ func createGuestUserToken(application *Application, clientSecret string, verifie
 	}
 
 	// Generate JWT token
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, guestUser, "", "", "", "", "")
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, guestUser, "", "", "", "", "", "")
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -592,7 +752,7 @@ func generateGuestUsername() string {
 
 // GetAuthorizationCodeToken
 // Authorization code flow
-func GetAuthorizationCodeToken(application *Application, clientSecret string, code string, verifier string) (*Token, *TokenError, error) {
+func GetAuthorizationCodeToken(application *Application, clientSecret string, code string, verifier string, resource string) (*Token, *TokenError, error) {
 	if code == "" {
 		return nil, &TokenError{
 			Error:            InvalidRequest,
@@ -660,6 +820,14 @@ func GetAuthorizationCodeToken(application *Application, clientSecret string, co
 		}, nil
 	}
 
+	// RFC 8707: Validate resource parameter matches the one in the authorization request
+	if resource != token.Resource {
+		return nil, &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("resource parameter does not match authorization request, expected: [%s], got: [%s]", token.Resource, resource),
+		}, nil
+	}
+
 	nowUnix := time.Now().Unix()
 	if nowUnix > token.CodeExpireIn {
 		// code must be used within 5 minutes
@@ -674,6 +842,15 @@ func GetAuthorizationCodeToken(application *Application, clientSecret string, co
 // GetPasswordToken
 // Resource Owner Password Credentials flow
 func GetPasswordToken(application *Application, username string, password string, scope string, host string) (*Token, *TokenError, error) {
+	expandedScope, ok := IsScopeValidAndExpand(scope, application)
+	if !ok {
+		return nil, &TokenError{
+			Error:            InvalidScope,
+			ErrorDescription: "the requested scope is invalid or not defined in the application",
+		}, nil
+	}
+	scope = expandedScope
+
 	user, err := GetUserByFields(application.Organization, username)
 	if err != nil {
 		return nil, nil, err
@@ -716,7 +893,7 @@ func GetPasswordToken(application *Application, username string, password string
 		return nil, nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, host)
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -755,6 +932,14 @@ func GetClientCredentialsToken(application *Application, clientSecret string, sc
 			ErrorDescription: "client_secret is invalid",
 		}, nil
 	}
+	expandedScope, ok := IsScopeValidAndExpand(scope, application)
+	if !ok {
+		return nil, &TokenError{
+			Error:            InvalidScope,
+			ErrorDescription: "the requested scope is invalid or not defined in the application",
+		}, nil
+	}
+	scope = expandedScope
 	nullUser := &User{
 		Owner: application.Owner,
 		Id:    application.GetId(),
@@ -762,7 +947,7 @@ func GetClientCredentialsToken(application *Application, clientSecret string, sc
 		Type:  "application",
 	}
 
-	accessToken, _, tokenName, err := generateJwtToken(application, nullUser, "", "", "", scope, host)
+	accessToken, _, tokenName, err := generateJwtToken(application, nullUser, "", "", "", scope, "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -794,6 +979,15 @@ func GetClientCredentialsToken(application *Application, clientSecret string, sc
 // GetImplicitToken
 // Implicit flow
 func GetImplicitToken(application *Application, username string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+	expandedScope, ok := IsScopeValidAndExpand(scope, application)
+	if !ok {
+		return nil, &TokenError{
+			Error:            InvalidScope,
+			ErrorDescription: "the requested scope is invalid or not defined in the application",
+		}, nil
+	}
+	scope = expandedScope
+
 	user, err := GetUserByFields(application.Organization, username)
 	if err != nil {
 		return nil, nil, err
@@ -818,6 +1012,84 @@ func GetImplicitToken(application *Application, username string, scope string, n
 	return token, nil, nil
 }
 
+// GetJwtBearerToken
+// RFC 7523
+func GetJwtBearerToken(application *Application, assertion string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+	ok, claims, err := ValidateJwtAssertion(assertion, application, host)
+	if err != nil || !ok {
+		if err != nil {
+			return nil, &TokenError{
+				Error:            InvalidGrant,
+				ErrorDescription: err.Error(),
+			}, err
+		}
+
+		return nil, &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("assertion (JWT) is invalid for application: [%s]", application.GetId()),
+		}, nil
+	}
+
+	return GetImplicitToken(application, claims.Subject, scope, nonce, host)
+}
+
+func ValidateJwtAssertion(clientAssertion string, application *Application, host string) (bool, *Claims, error) {
+	_, originBackend := getOriginFromHost(host)
+
+	clientCert, err := getCert(application.Owner, application.ClientCert)
+	if err != nil {
+		return false, nil, err
+	}
+	if clientCert == nil {
+		return false, nil, fmt.Errorf("client certificate is not configured for application: [%s]", application.GetId())
+	}
+
+	claims, err := ParseJwtToken(clientAssertion, clientCert)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if !slices.Contains(application.RedirectUris, claims.Issuer) {
+		return false, nil, nil
+	}
+
+	if !slices.Contains(claims.Audience, fmt.Sprintf("%s/api/login/oauth/access_token", originBackend)) {
+		return false, nil, nil
+	}
+
+	return true, claims, nil
+}
+
+func ValidateClientAssertion(clientAssertion string, host string) (bool, *Application, error) {
+	token, err := ParseJwtTokenWithoutValidation(clientAssertion)
+	if err != nil {
+		return false, nil, err
+	}
+
+	clientId, err := token.Claims.GetSubject()
+	if err != nil {
+		return false, nil, err
+	}
+
+	application, err := GetApplicationByClientId(clientId)
+	if err != nil {
+		return false, nil, err
+	}
+	if application == nil {
+		return false, nil, fmt.Errorf("application not found for client: [%s]", clientId)
+	}
+
+	ok, _, err := ValidateJwtAssertion(clientAssertion, application, host)
+	if err != nil {
+		return false, application, err
+	}
+	if !ok {
+		return false, application, nil
+	}
+
+	return true, application, nil
+}
+
 // GetTokenByUser
 // Implicit flow
 func GetTokenByUser(application *Application, user *User, scope string, nonce string, host string) (*Token, error) {
@@ -826,7 +1098,7 @@ func GetTokenByUser(application *Application, user *User, scope string, nonce st
 		return nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", nonce, scope, host)
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", nonce, scope, "", host)
 	if err != nil {
 		return nil, err
 	}
@@ -905,9 +1177,16 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 			name = fmt.Sprintf("wechat-%s", openId)
 		}
 
+		// Generate a unique user ID within the confines of the application
+		newUserId, idErr := GenerateIdForNewUser(application)
+		if idErr != nil {
+			// If we fail to generate a unique user ID, we can fallback to a random ID
+			newUserId = util.GenerateId()
+		}
+
 		user = &User{
 			Owner:             application.Organization,
-			Id:                util.GenerateId(),
+			Id:                newUserId,
 			Name:              name,
 			Avatar:            avatar,
 			SignupApplication: application.Name,
@@ -933,7 +1212,7 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 		return nil, nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", "", host)
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", "", "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -960,6 +1239,183 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 	if err != nil {
 		return nil, nil, err
 	}
+	return token, nil, nil
+}
+
+// GetTokenExchangeToken
+// Token Exchange Grant (RFC 8693)
+// Exchanges a subject token for a new token with different audience or scope
+func GetTokenExchangeToken(application *Application, clientSecret string, subjectToken string, subjectTokenType string, audience string, scope string, host string) (*Token, *TokenError, error) {
+	// Verify client secret
+	if application.ClientSecret != clientSecret {
+		return nil, &TokenError{
+			Error:            InvalidClient,
+			ErrorDescription: "client_secret is invalid",
+		}, nil
+	}
+
+	// Validate subject_token parameter
+	if subjectToken == "" {
+		return nil, &TokenError{
+			Error:            InvalidRequest,
+			ErrorDescription: "subject_token is required",
+		}, nil
+	}
+
+	// Validate subject_token_type parameter
+	// RFC 8693 defines standard token type identifiers
+	if subjectTokenType == "" {
+		subjectTokenType = "urn:ietf:params:oauth:token-type:access_token" // Default to access_token
+	}
+
+	// Support common token types
+	supportedTokenTypes := []string{
+		"urn:ietf:params:oauth:token-type:access_token",
+		"urn:ietf:params:oauth:token-type:jwt",
+		"urn:ietf:params:oauth:token-type:id_token",
+	}
+
+	isValidTokenType := false
+	for _, tokenType := range supportedTokenTypes {
+		if subjectTokenType == tokenType {
+			isValidTokenType = true
+			break
+		}
+	}
+
+	if !isValidTokenType {
+		return nil, &TokenError{
+			Error:            InvalidRequest,
+			ErrorDescription: fmt.Sprintf("unsupported subject_token_type: %s", subjectTokenType),
+		}, nil
+	}
+
+	// Get certificate for token validation
+	cert, err := getCertByApplication(application)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cert == nil {
+		return nil, &TokenError{
+			Error:            EndpointError,
+			ErrorDescription: fmt.Sprintf("cert: %s cannot be found", application.Cert),
+		}, nil
+	}
+
+	// Parse and validate the subject token
+	var subjectOwner, subjectName, subjectScope string
+	if application.TokenFormat == "JWT-Standard" {
+		standardClaims, err := ParseStandardJwtToken(subjectToken, cert)
+		if err != nil {
+			return nil, &TokenError{
+				Error:            InvalidGrant,
+				ErrorDescription: fmt.Sprintf("invalid subject_token: %s", err.Error()),
+			}, nil
+		}
+		subjectOwner = standardClaims.Owner
+		subjectName = standardClaims.Name
+		subjectScope = standardClaims.Scope
+	} else {
+		claims, err := ParseJwtToken(subjectToken, cert)
+		if err != nil {
+			return nil, &TokenError{
+				Error:            InvalidGrant,
+				ErrorDescription: fmt.Sprintf("invalid subject_token: %s", err.Error()),
+			}, nil
+		}
+		subjectOwner = claims.Owner
+		subjectName = claims.Name
+		subjectScope = claims.Scope
+	}
+
+	// Get the user from the subject token
+	user, err := getUser(subjectOwner, subjectName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if user == nil {
+		return nil, &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("user from subject_token does not exist: %s", util.GetId(subjectOwner, subjectName)),
+		}, nil
+	}
+
+	if user.IsForbidden {
+		return nil, &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: "the user is forbidden to sign in, please contact the administrator",
+		}, nil
+	}
+
+	// Handle scope parameter
+	// If scope is not provided, use the scope from the subject token
+	// If scope is provided, it should be a subset of the subject token's scope (downscoping)
+	if scope == "" {
+		scope = subjectScope
+	} else {
+		// Validate scope downscoping (basic implementation)
+		// In a production environment, you would implement more sophisticated scope validation
+		if subjectScope != "" {
+			subjectScopes := strings.Split(subjectScope, " ")
+			requestedScopes := strings.Split(scope, " ")
+			for _, requestedScope := range requestedScopes {
+				if requestedScope == "" {
+					continue // Skip empty strings
+				}
+				found := false
+				for _, existingScope := range subjectScopes {
+					if existingScope != "" && requestedScope == existingScope {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, &TokenError{
+						Error:            InvalidScope,
+						ErrorDescription: fmt.Sprintf("requested scope '%s' is not in subject token's scope", requestedScope),
+					}, nil
+				}
+			}
+		}
+	}
+
+	// Extend user with roles and permissions
+	err = ExtendUserWithRolesAndPermissions(user)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Generate new JWT token
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, "", host)
+	if err != nil {
+		return nil, &TokenError{
+			Error:            EndpointError,
+			ErrorDescription: fmt.Sprintf("generate jwt token error: %s", err.Error()),
+		}, nil
+	}
+
+	// Create token object
+	token := &Token{
+		Owner:        application.Owner,
+		Name:         tokenName,
+		CreatedTime:  util.GetCurrentTime(),
+		Application:  application.Name,
+		Organization: user.Owner,
+		User:         user.Name,
+		Code:         util.GenerateClientId(),
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
+		Scope:        scope,
+		TokenType:    "Bearer",
+		CodeIsUsed:   true,
+	}
+
+	_, err = AddToken(token)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return token, nil, nil
 }
 

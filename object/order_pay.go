@@ -179,6 +179,17 @@ func PayOrder(providerName, host, paymentEnv string, order *Order, lang string) 
 			return nil, nil, fmt.Errorf("the plan: %s does not exist", productInfo.PlanName)
 		}
 
+		// Check if plan restricts user to one subscription
+		if plan.IsExclusive {
+			hasSubscription, err := HasActiveSubscriptionForPlan(owner, user.Name, plan.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			if hasSubscription {
+				return nil, nil, fmt.Errorf("user already has an active subscription for plan: %s", plan.Name)
+			}
+		}
+
 		sub, err := NewSubscription(owner, user.Name, plan.Name, paymentName, plan.Period)
 		if err != nil {
 			return nil, nil, err
@@ -265,7 +276,7 @@ func PayOrder(providerName, host, paymentEnv string, order *Order, lang string) 
 		OutOrderId: payResp.OrderId,
 	}
 
-	if provider.Type == "Dummy" || provider.Type == "Balance" {
+	if provider.Type == "Balance" {
 		payment.State = pp.PaymentStatePaid
 	}
 
@@ -340,7 +351,7 @@ func PayOrder(providerName, host, paymentEnv string, order *Order, lang string) 
 	}
 
 	order.Payment = payment.Name
-	if provider.Type == "Dummy" || provider.Type == "Balance" {
+	if provider.Type == "Balance" {
 		order.State = "Paid"
 		order.Message = "Payment successful"
 		order.UpdateTime = util.GetCurrentTime()
@@ -353,7 +364,7 @@ func PayOrder(providerName, host, paymentEnv string, order *Order, lang string) 
 	}
 
 	// Update product stock after order state is persisted (for instant payment methods)
-	if provider.Type == "Dummy" || provider.Type == "Balance" {
+	if provider.Type == "Balance" {
 		err = UpdateProductStock(orderProductInfos)
 		if err != nil {
 			return nil, nil, err

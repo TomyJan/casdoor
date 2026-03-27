@@ -216,7 +216,7 @@ class LoginPage extends React.Component {
             this.setState({
               msg: res.msg,
             });
-            return ;
+            return;
           }
           this.onUpdateApplication(res.data);
         });
@@ -286,8 +286,8 @@ class LoginPage extends React.Component {
     }
     switch (this.state.loginMethod) {
     case "verificationCode": return i18next.t("login:Email or phone");
-    case "verificationCodeEmail": return i18next.t("login:Email");
-    case "verificationCodePhone": return i18next.t("login:Phone");
+    case "verificationCodeEmail": return i18next.t("general:Email");
+    case "verificationCodePhone": return i18next.t("general:Phone");
     case "ldap": return i18next.t("login:LDAP username, Email or phone");
     default: return i18next.t("login:username, Email or phone");
     }
@@ -365,7 +365,14 @@ class LoginPage extends React.Component {
 
     if (resp.data3) {
       sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-      Setting.goToLinkSoft(ths, `/forget/${application.name}`);
+      Setting.goToLinkSoft(ths, "/account");
+      return;
+    }
+
+    // Check if consent is required
+    if (resp.data?.required === true) {
+      // Consent required, redirect to consent page
+      Setting.goToLinkSoft(ths, `/consent/${application.name}?${window.location.search.substring(1)}`);
       return;
     }
 
@@ -530,7 +537,8 @@ class LoginPage extends React.Component {
             if (responseType === "login") {
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, `/forget/${this.state.applicationName}`);
+                Setting.goToLinkSoft(this, "/account");
+                return;
               }
               Setting.showMessage("success", i18next.t("application:Logged in successfully"));
               this.props.onLoginSuccess();
@@ -544,7 +552,8 @@ class LoginPage extends React.Component {
             } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, `/forget/${this.state.applicationName}`);
+                Setting.goToLinkSoft(this, "/account");
+                return;
               }
               const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
               const accessToken = res.data;
@@ -566,7 +575,8 @@ class LoginPage extends React.Component {
               }
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, `/forget/${this.state.applicationName}`);
+                Setting.goToLinkSoft(this, "/account");
+                return;
               }
               if (res.data2.method === "POST") {
                 this.setState({
@@ -688,7 +698,11 @@ class LoginPage extends React.Component {
       return (
         <div key={resultItemKey} className="login-languages">
           <div dangerouslySetInnerHTML={{__html: ("<style>" + signinItem.customCss?.replaceAll("<style>", "").replaceAll("</style>", "") + "</style>")}} />
-          <LanguageSelect languages={application.organizationObj.languages} onClick={key => {this.setState({userLang: key});}} />
+          <LanguageSelect
+            languages={application.organizationObj.languages}
+            mode={signinItem.rule}
+            onClick={key => {this.setState({userLang: key});}}
+          />
         </div>
       );
     } else if (signinItem.name === "Signin methods") {
@@ -1141,9 +1155,11 @@ class LoginPage extends React.Component {
       visible={this.state.openCaptchaModal}
       noModal={noModal}
       onUpdateToken={(captchaType, captchaToken, clientSecret) => {
-        this.setState({captchaValues: {
-          captchaType, captchaToken, clientSecret,
-        }});
+        this.setState({
+          captchaValues: {
+            captchaType, captchaToken, clientSecret,
+          },
+        });
       }}
       onOk={(captchaType, captchaToken, clientSecret) => {
         const values = this.state.values;
@@ -1260,9 +1276,12 @@ class LoginPage extends React.Component {
         const rawId = assertion.rawId;
         const sig = assertion.response.signature;
         const userHandle = assertion.response.userHandle;
+        const resourceQuery = oAuthParams?.resource
+          ? `&resource=${encodeURIComponent(oAuthParams.resource)}`
+          : "";
         let finishUrl = `${Setting.ServerUrl}/api/webauthn/signin/finish?responseType=${values["type"]}`;
         if (values["type"] === "code") {
-          finishUrl = `${Setting.ServerUrl}/api/webauthn/signin/finish?responseType=${values["type"]}&clientId=${oAuthParams.clientId}&scope=${oAuthParams.scope}&redirectUri=${oAuthParams.redirectUri}&nonce=${oAuthParams.nonce}&state=${oAuthParams.state}&codeChallenge=${oAuthParams.codeChallenge}&challengeMethod=${oAuthParams.challengeMethod}`;
+          finishUrl = `${Setting.ServerUrl}/api/webauthn/signin/finish?responseType=${values["type"]}&clientId=${oAuthParams.clientId}&scope=${oAuthParams.scope}&redirectUri=${oAuthParams.redirectUri}&nonce=${oAuthParams.nonce}&state=${oAuthParams.state}&codeChallenge=${oAuthParams.codeChallenge}&challengeMethod=${oAuthParams.challengeMethod}${resourceQuery}`;
         }
         return fetch(finishUrl, {
           method: "POST",

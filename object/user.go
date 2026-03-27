@@ -17,6 +17,7 @@ package object
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -108,8 +109,6 @@ type User struct {
 	PreHash              string     `xorm:"varchar(100)" json:"preHash"`
 	RegisterType         string     `xorm:"varchar(100)" json:"registerType"`
 	RegisterSource       string     `xorm:"varchar(100)" json:"registerSource"`
-	AccessKey            string     `xorm:"varchar(100)" json:"accessKey"`
-	AccessSecret         string     `xorm:"varchar(100)" json:"accessSecret"`
 	AccessToken          string     `xorm:"mediumtext" json:"accessToken"`
 	OriginalToken        string     `xorm:"mediumtext" json:"originalToken"`
 	OriginalRefreshToken string     `xorm:"mediumtext" json:"originalRefreshToken"`
@@ -180,6 +179,7 @@ type User struct {
 	Spotify         string `xorm:"spotify varchar(100)" json:"spotify"`
 	Strava          string `xorm:"strava varchar(100)" json:"strava"`
 	Stripe          string `xorm:"stripe varchar(100)" json:"stripe"`
+	Telegram        string `xorm:"telegram varchar(100)" json:"telegram"`
 	TikTok          string `xorm:"tiktok varchar(100)" json:"tiktok"`
 	Tumblr          string `xorm:"tumblr varchar(100)" json:"tumblr"`
 	Twitch          string `xorm:"twitch varchar(100)" json:"twitch"`
@@ -241,6 +241,7 @@ type User struct {
 	MfaRememberDeadline string           `xorm:"varchar(100)" json:"mfaRememberDeadline"`
 	NeedUpdatePassword  bool             `json:"needUpdatePassword"`
 	IpWhitelist         string           `xorm:"varchar(200)" json:"ipWhitelist"`
+	ApplicationScopes   []ConsentRecord  `xorm:"mediumtext" json:"applicationScopes"`
 }
 
 type Userinfo struct {
@@ -636,23 +637,6 @@ func GetUserByInvitationCode(owner string, invitationCode string) (*User, error)
 	}
 }
 
-func GetUserByAccessKey(accessKey string) (*User, error) {
-	if accessKey == "" {
-		return nil, nil
-	}
-	user := User{AccessKey: accessKey}
-	existed, err := ormer.Engine.Get(&user)
-	if err != nil {
-		return nil, err
-	}
-
-	if existed {
-		return &user, nil
-	} else {
-		return nil, nil
-	}
-}
-
 func GetUser(id string) (*User, error) {
 	owner, name, err := util.GetOwnerAndNameFromIdWithError(id)
 	if err != nil {
@@ -680,14 +664,20 @@ func GetMaskedUser(user *User, isAdminOrSelf bool, errs ...error) (*User, error)
 	}
 
 	if !isAdminOrSelf {
-		if user.AccessSecret != "" {
-			user.AccessSecret = "***"
-		}
 		if user.OriginalToken != "" {
 			user.OriginalToken = "***"
 		}
 		if user.OriginalRefreshToken != "" {
 			user.OriginalRefreshToken = "***"
+		}
+		// Mask per-provider OAuth tokens in Properties
+		if user.Properties != nil {
+			for key := range user.Properties {
+				// More specific pattern matching to avoid masking unrelated properties
+				if strings.HasPrefix(key, "oauth_") && (strings.HasSuffix(key, "_accessToken") || strings.HasSuffix(key, "_refreshToken")) {
+					user.Properties[key] = "***"
+				}
+			}
 		}
 	}
 
@@ -851,17 +841,17 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 	if len(columns) == 0 {
 		columns = []string{
 			"owner", "display_name", "avatar", "first_name", "last_name",
-			"location", "address", "country_code", "region", "language", "affiliation", "title", "id_card_type", "id_card", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application",
-			"is_admin", "is_forbidden", "is_deleted", "hash", "is_default_avatar", "properties", "webauthnCredentials", "managedAccounts", "face_ids", "mfaAccounts",
-			"signin_wrong_times", "last_change_password_time", "last_signin_wrong_time", "groups", "access_key", "access_secret", "mfa_phone_enabled", "mfa_email_enabled", "email_verified",
+			"location", "address", "addresses", "country_code", "region", "language", "affiliation", "title", "id_card_type", "id_card", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application", "register_type", "register_source",
+			"is_admin", "is_forbidden", "is_deleted", "hash", "is_default_avatar", "properties", "webauthnCredentials", "mfa_items", "last_change_password_time", "managedAccounts", "face_ids", "mfaAccounts",
+			"signin_wrong_times", "last_signin_wrong_time", "groups", "mfa_phone_enabled", "mfa_email_enabled", "email_verified",
 			"github", "google", "qq", "wechat", "facebook", "dingtalk", "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs",
 			"baidu", "alipay", "casdoor", "infoflow", "apple", "azuread", "azureadb2c", "slack", "steam", "bilibili", "okta", "douyin", "kwai", "line", "amazon",
 			"auth0", "battlenet", "bitbucket", "box", "cloudfoundry", "dailymotion", "deezer", "digitalocean", "discord", "dropbox",
 			"eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru", "meetup",
 			"microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify", "soundcloud",
-			"spotify", "strava", "stripe", "type", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
-			"yammer", "yandex", "zoom", "custom", "need_update_password", "ip_whitelist", "mfa_items", "mfa_remember_deadline",
-			"cart",
+			"spotify", "strava", "stripe", "type", "telegram", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
+			"yammer", "yandex", "zoom", "custom", "need_update_password", "ip_whitelist", "mfa_remember_deadline",
+			"cart", "application_scopes",
 		}
 	}
 	if isAdmin {
@@ -945,6 +935,13 @@ func UpdateUserForAllFields(id string, user *User) (bool, error) {
 
 	user.UpdatedTime = util.GetCurrentTime()
 
+	if len(user.Groups) > 0 {
+		_, err = userEnforcer.UpdateGroupsForUser(user.GetId(), user.Groups)
+		if err != nil {
+			return false, err
+		}
+	}
+
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(user)
 	if err != nil {
 		return false, err
@@ -969,7 +966,7 @@ func AddUser(user *User, lang string) (bool, error) {
 	}
 
 	if user.Owner == "" || user.Name == "" {
-		return false, fmt.Errorf(i18n.Translate(lang, "user:the user's owner and name should not be empty"))
+		return false, errors.New(i18n.Translate(lang, "user:the user's owner and name should not be empty"))
 	}
 
 	if CheckUsernameWithEmail(user.Name, "en") != "" {
@@ -995,7 +992,7 @@ func AddUser(user *User, lang string) (bool, error) {
 	}
 
 	if organization.Name == "built-in" && !organization.HasPrivilegeConsent && user.Name != "admin" {
-		return false, fmt.Errorf(i18n.Translate(lang, "organization:adding a new user to the 'built-in' organization is currently disabled. Please note: all users in the 'built-in' organization are global administrators in Casdoor. Refer to the docs: https://casdoor.org/docs/basic/core-concepts#how-does-casdoor-manage-itself. If you still wish to create a user for the 'built-in' organization, go to the organization's settings page and enable the 'Has privilege consent' option."))
+		return false, errors.New(i18n.Translate(lang, "organization:adding a new user to the 'built-in' organization is currently disabled. Please note: all users in the 'built-in' organization are global administrators in Casdoor. Refer to the docs: https://casdoor.org/docs/basic/core-concepts#how-does-casdoor-manage-itself. If you still wish to create a user for the 'built-in' organization, go to the organization's settings page and enable the 'Has privilege consent' option."))
 	}
 
 	if user.BalanceCurrency == "" {
@@ -1375,17 +1372,6 @@ func (user *User) GetPreferredMfaProps(masked bool) *MfaProps {
 		return nil
 	}
 	return user.GetMfaProps(user.PreferredMfaType, masked)
-}
-
-func AddUserKeys(user *User, isAdmin bool) (bool, error) {
-	if user == nil {
-		return false, fmt.Errorf("the user is not found")
-	}
-
-	user.AccessKey = util.GenerateId()
-	user.AccessSecret = util.GenerateId()
-
-	return UpdateUser(user.GetId(), user, []string{}, isAdmin)
 }
 
 func (user *User) IsApplicationAdmin(application *Application) bool {

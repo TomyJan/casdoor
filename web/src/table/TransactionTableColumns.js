@@ -168,7 +168,7 @@ export function getTransactionTableColumns(options = {}) {
   });
 
   columns.push({
-    title: i18next.t("provider:Category"),
+    title: i18next.t("general:Category"),
     dataIndex: "category",
     key: "category",
     width: "120px",
@@ -177,7 +177,7 @@ export function getTransactionTableColumns(options = {}) {
   });
 
   columns.push({
-    title: i18next.t("provider:Type"),
+    title: i18next.t("general:Type"),
     dataIndex: "type",
     key: "type",
     width: "140px",
@@ -272,7 +272,7 @@ export function getTransactionTableColumns(options = {}) {
   });
 
   columns.push({
-    title: i18next.t("transaction:Amount"),
+    title: i18next.t("product:Amount"),
     dataIndex: "amount",
     key: "amount",
     width: "180px",

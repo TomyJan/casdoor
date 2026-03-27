@@ -25,8 +25,8 @@ export function getAccount(query = "") {
   }).then(res => res.json());
 }
 
-export function signup(values) {
-  return fetch(`${authConfig.serverUrl}/api/signup`, {
+export function signup(values, oAuthParams) {
+  return fetch(`${authConfig.serverUrl}/api/signup${oAuthParamsToQuery(oAuthParams)}`, {
     method: "POST",
     credentials: "include",
     body: JSON.stringify(values),
@@ -56,8 +56,12 @@ export function oAuthParamsToQuery(oAuthParams) {
     return "";
   }
 
+  const resourceQuery = oAuthParams.resource
+    ? `&resource=${encodeURIComponent(oAuthParams.resource)}`
+    : "";
+
   // code
-  return `?clientId=${oAuthParams.clientId}&responseType=${oAuthParams.responseType}&redirectUri=${encodeURIComponent(oAuthParams.redirectUri)}&type=${oAuthParams.type}&scope=${oAuthParams.scope}&state=${oAuthParams.state}&nonce=${oAuthParams.nonce}&code_challenge_method=${oAuthParams.challengeMethod}&code_challenge=${oAuthParams.codeChallenge}`;
+  return `?clientId=${oAuthParams.clientId}&responseType=${oAuthParams.responseType}&redirectUri=${encodeURIComponent(oAuthParams.redirectUri)}&type=${oAuthParams.type}&scope=${oAuthParams.scope}&state=${oAuthParams.state}&nonce=${oAuthParams.nonce}&code_challenge_method=${oAuthParams.challengeMethod}&code_challenge=${oAuthParams.codeChallenge}${resourceQuery}`;
 }
 
 export function getApplicationLogin(params) {

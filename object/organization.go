@@ -67,6 +67,7 @@ type Organization struct {
 	PasswordExpireDays     int        `json:"passwordExpireDays"`
 	CountryCodes           []string   `xorm:"mediumtext"  json:"countryCodes"`
 	DefaultAvatar          string     `xorm:"varchar(200)" json:"defaultAvatar"`
+	UsePermanentAvatar     bool       `xorm:"bool" json:"usePermanentAvatar"`
 	DefaultApplication     string     `xorm:"varchar(100)" json:"defaultApplication"`
 	UserTypes              []string   `xorm:"mediumtext" json:"userTypes"`
 	Tags                   []string   `xorm:"mediumtext" json:"tags"`
@@ -91,6 +92,15 @@ type Organization struct {
 	MfaRememberInHours int            `json:"mfaRememberInHours"`
 	AccountMenu        string         `xorm:"varchar(20)" json:"accountMenu"`
 	AccountItems       []*AccountItem `xorm:"mediumtext" json:"accountItems"`
+
+	DcrPolicy string `xorm:"varchar(100)" json:"dcrPolicy"`
+
+	LdapAttributes []string `xorm:"mediumtext" json:"ldapAttributes"`
+
+	KerberosRealm       string `xorm:"varchar(200)" json:"kerberosRealm"`
+	KerberosKdcHost     string `xorm:"varchar(200)" json:"kerberosKdcHost"`
+	KerberosKeytab      string `xorm:"mediumtext" json:"kerberosKeytab"`
+	KerberosServiceName string `xorm:"varchar(100)" json:"kerberosServiceName"`
 
 	OrgBalance      float64 `json:"orgBalance"`
 	UserBalance     float64 `json:"userBalance"`
