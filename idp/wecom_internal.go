@@ -160,10 +160,11 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 	if infoResp.Errcode != 0 {
 		return nil, fmt.Errorf("userInfoResp.errcode = %d, userInfoResp.errmsg = %s", infoResp.Errcode, infoResp.Errmsg)
 	}
+	idStr := oauthStableID(infoResp.UserId, "", "", "", infoResp.Email)
 	userInfo := UserInfo{
-		Id:          infoResp.UserId,
-		Username:    infoResp.Name,
-		DisplayName: infoResp.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", infoResp.UserId, "", "", infoResp.Email),
+		DisplayName: displayNameFromNickname(infoResp.Name, "", "", infoResp.Email, idStr),
 		Email:       infoResp.Email,
 		AvatarUrl:   infoResp.Avatar,
 	}

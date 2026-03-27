@@ -163,10 +163,11 @@ func (idp *TwitterIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error
 	}
 	TwitterUserInfo = empTwitterCheckToken.Data
 
+	idStr := oauthStableID(TwitterUserInfo.Id, "", "", "", TwitterUserInfo.Email)
 	userInfo := UserInfo{
-		Id:          TwitterUserInfo.Id,
-		Username:    TwitterUserInfo.UserName,
-		DisplayName: TwitterUserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(TwitterUserInfo.UserName, TwitterUserInfo.Id, "", "", TwitterUserInfo.Email),
+		DisplayName: displayNameFromNickname("", TwitterUserInfo.Name, TwitterUserInfo.UserName, TwitterUserInfo.Email, idStr),
 		Email:       TwitterUserInfo.Email,
 		AvatarUrl:   TwitterUserInfo.Picture.Data.Url,
 	}
