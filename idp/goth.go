@@ -485,10 +485,11 @@ func (idp *GothIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 }
 
 func getUser(gothUser goth.User, provider string) *UserInfo {
+	idStr := oauthStableID(gothUser.UserID, "", "", "", gothUser.Email)
 	user := UserInfo{
-		Id:          gothUser.UserID,
-		Username:    gothUser.Name,
-		DisplayName: gothUser.NickName,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(gothUser.NickName, gothUser.UserID, "", "", gothUser.Email),
+		DisplayName: displayNameFromNickname(gothUser.NickName, gothUser.Name, gothUser.Name, gothUser.Email, idStr),
 		Email:       gothUser.Email,
 		AvatarUrl:   gothUser.AvatarURL,
 	}

@@ -174,17 +174,12 @@ func (idp *QqIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 		return nil, fmt.Errorf("ret expected 0, got %d", qqUserInfo.Ret)
 	}
 
-	// Use unionid as Id if available, otherwise use openid
-	// Use unionid/openid as Username instead of nickname for security
-	userId := unionId
-	if userId == "" {
-		userId = openId
-	}
-
+	rawId := oauthStableID("", unionId, openId, "", "")
+	userName := oauthUsernamePreferLogin("", "", unionId, openId, "")
 	userInfo := UserInfo{
-		Id:          visibleUnencode(userId),
-		Username:    visibleUnencode(userId),
-		DisplayName: qqUserInfo.Nickname,
+		Id:          visibleUnencode(rawId),
+		Username:    visibleUnencode(userName),
+		DisplayName: displayNameFromNickname(qqUserInfo.Nickname, "", "", "", visibleUnencode(rawId)),
 		AvatarUrl:   qqUserInfo.FigureurlQq1,
 		UnionId:     unionId,
 	}

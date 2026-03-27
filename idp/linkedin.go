@@ -290,18 +290,20 @@ func (idp *LinkedInIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, err
 	}
 
-	username := ""
+	fullName := ""
 	for _, name := range linkedInUserInfo.FirstName.Localized {
-		username += name
+		fullName += name
 	}
 	for _, name := range linkedInUserInfo.LastName.Localized {
-		username += name
+		fullName += name
 	}
+	email := linkedInUserEmail.Elements[0].Handle.EmailAddress
+	idStr := oauthStableID(linkedInUserInfo.Id, "", "", "", email)
 	userInfo := UserInfo{
-		Id:          linkedInUserInfo.Id,
-		DisplayName: username,
-		Username:    username,
-		Email:       linkedInUserEmail.Elements[0].Handle.EmailAddress,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", linkedInUserInfo.Id, "", "", email),
+		DisplayName: displayNameFromNickname("", fullName, "", email, idStr),
+		Email:       email,
 		AvatarUrl:   linkedInUserInfo.ProfilePicture.DisplayImage1.Elements[0].Identifiers[0].Identifier,
 	}
 	return &userInfo, nil
