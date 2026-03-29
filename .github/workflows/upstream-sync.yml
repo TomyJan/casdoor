@@ -71,12 +71,24 @@ jobs:
           git fetch upstream "${UPSTREAM_BRANCH}"
           git fetch origin "${TARGET_BRANCH}"
 
-          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
+          # Build sync branch from origin target branch, then apply upstream delta as a squash patch.
+          # This avoids pushing upstream commit history that may contain workflow-file changes.
+          git checkout -B "${SYNC_BRANCH}" "origin/${TARGET_BRANCH}"
 
-          # GitHub Actions token cannot push workflow-file updates in many repos.
-          # Keep sync running by excluding .github/workflows changes by default.
+          PATCH_FILE="/tmp/upstream-sync.patch"
           if [ "${EXCLUDE_WORKFLOW_FILES}" = "true" ]; then
-            git checkout "origin/${TARGET_BRANCH}" -- .github/workflows || true
+            git diff --binary --no-color \
+              "origin/${TARGET_BRANCH}" "upstream/${UPSTREAM_BRANCH}" \
+              -- . ':(exclude).github/workflows/**' > "${PATCH_FILE}"
+          else
+            git diff --binary --no-color \
+              "origin/${TARGET_BRANCH}" "upstream/${UPSTREAM_BRANCH}" \
+              > "${PATCH_FILE}"
+          fi
+
+          if [ -s "${PATCH_FILE}" ]; then
+            git apply --index "${PATCH_FILE}"
+            git commit -m "chore: sync from upstream ${UPSTREAM_BRANCH}"
           fi
 
           if ! git push origin "${SYNC_BRANCH}" --force; then
