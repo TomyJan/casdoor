@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/upstream-sync.yml'
 
 permissions:
   contents: write
@@ -19,6 +23,7 @@ env:
   UPSTREAM_BRANCH: master
   SYNC_BRANCH: sync/upstream-master
   TARGET_BRANCH: master
+  EXCLUDE_WORKFLOW_FILES: "true"
 
 jobs:
   sync:
@@ -67,7 +72,17 @@ jobs:
           git fetch origin "${TARGET_BRANCH}"
 
           git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
-          git push origin "${SYNC_BRANCH}" --force
+
+          # GitHub Actions token cannot push workflow-file updates in many repos.
+          # Keep sync running by excluding .github/workflows changes by default.
+          if [ "${EXCLUDE_WORKFLOW_FILES}" = "true" ]; then
+            git checkout "origin/${TARGET_BRANCH}" -- .github/workflows || true
+          fi
+
+          if ! git push origin "${SYNC_BRANCH}" --force; then
+            echo "Push failed. If this is due to .github/workflows permissions, keep EXCLUDE_WORKFLOW_FILES=true or use a PAT token workflow."
+            exit 1
+          fi
 
           AHEAD_COUNT=$(git rev-list --count "origin/${TARGET_BRANCH}..${SYNC_BRANCH}")
           echo "ahead_count=${AHEAD_COUNT}" >> "$GITHUB_OUTPUT"
