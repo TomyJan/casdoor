@@ -1,0 +1,98 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  # Change this to your actual upstream repository: owner/repo
+  UPSTREAM_REPO: casdoor/casdoor
+  UPSTREAM_BRANCH: master
+  SYNC_BRANCH: sync/upstream-master
+  TARGET_BRANCH: master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check existing open sync PR
+        id: check_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const head = `${owner}:${process.env.SYNC_BRANCH}`;
+            const base = process.env.TARGET_BRANCH;
+            const prs = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: "open",
+              head,
+              base,
+              per_page: 100,
+            });
+            core.setOutput("exists", prs.data.length > 0 ? "true" : "false");
+
+      - name: Stop when an open sync PR exists
+        if: steps.check_pr.outputs.exists == 'true'
+        run: |
+          echo "An open sync PR already exists. Skip to avoid overwriting your in-progress conflict resolution."
+
+      - name: Checkout repository
+        if: steps.check_pr.outputs.exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare sync branch from upstream
+        id: prepare
+        if: steps.check_pr.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}"
+          git fetch origin "${TARGET_BRANCH}"
+
+          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
+          git push origin "${SYNC_BRANCH}" --force
+
+          AHEAD_COUNT=$(git rev-list --count "origin/${TARGET_BRANCH}..${SYNC_BRANCH}")
+          echo "ahead_count=${AHEAD_COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create sync PR
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count != '0'
+        id: create_pr
+        uses: actions/github-script@v7
+        env:
+          AHEAD_COUNT: ${{ steps.prepare.outputs.ahead_count }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const head = process.env.SYNC_BRANCH;
+            const base = process.env.TARGET_BRANCH;
+
+            const title = `chore: sync from upstream ${process.env.UPSTREAM_BRANCH}`;
+            const body = [
+              `Auto-created by workflow from https://github.com/${process.env.UPSTREAM_REPO}.`,
+              "",
+              "If there are conflicts, resolve them in this PR and merge manually.",
+            ].join("\n");
+
+            await github.rest.pulls.create({ owner, repo, title, head, base, body });
+
+      - name: No upstream changes
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count == '0'
+        run: echo "No new upstream commits to sync."
