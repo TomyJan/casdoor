@@ -167,36 +167,36 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, err
 	}
 
+	userInfo := UserInfo{
+		Id:          dtUserInfo.OpenId,
+		Username:    dtUserInfo.Nick,
+		DisplayName: dtUserInfo.Nick,
+		UnionId:     dtUserInfo.UnionId,
+		Email:       dtUserInfo.Email,
+		Phone:       dtUserInfo.Mobile,
+		CountryCode: countryCode,
+		AvatarUrl:   dtUserInfo.AvatarUrl,
+	}
+
 	corpAccessToken := idp.getInnerAppAccessToken()
-	corpUserId, err := idp.getUserId(dtUserInfo.UnionId, corpAccessToken)
+	userId, err := idp.getUserId(userInfo.UnionId, corpAccessToken)
 	if err != nil {
 		return nil, err
 	}
 
-	corpMobile, corpEmail, corpUnionId, err := idp.getUserCorpEmail(corpUserId, corpAccessToken)
-	email := dtUserInfo.Email
+	corpMobile, corpEmail, unionId, err := idp.getUserCorpEmail(userId, corpAccessToken)
 	if err == nil {
 		if corpMobile != "" {
-			dtUserInfo.Mobile = corpMobile
+			userInfo.Phone = corpMobile
 		}
+
 		if corpEmail != "" {
-			email = corpEmail
+			userInfo.Email = corpEmail
 		}
-	}
 
-	unionId := firstNonEmpty(corpUnionId, dtUserInfo.UnionId)
-	idStr := oauthStableID(corpUserId, unionId, dtUserInfo.OpenId, "", email)
-	usernameStr := oauthUsernamePreferLogin("", corpUserId, unionId, dtUserInfo.OpenId, email)
-
-	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    usernameStr,
-		DisplayName: displayNameFromNickname(dtUserInfo.Nick, "", "", email, idStr),
-		UnionId:     unionId,
-		Email:       email,
-		Phone:       dtUserInfo.Mobile,
-		CountryCode: countryCode,
-		AvatarUrl:   dtUserInfo.AvatarUrl,
+		if unionId != "" {
+			userInfo.Username = unionId
+		}
 	}
 
 	return &userInfo, nil

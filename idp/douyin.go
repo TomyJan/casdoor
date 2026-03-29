@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -150,7 +149,6 @@ type DouyinUserInfo struct {
 		Gender   int64  `json:"gender"`
 		Nickname string `json:"nickname"`
 		OpenId   string `json:"open_id"`
-		UnionId  string `json:"union_id"`
 		Province string `json:"province"`
 	} `json:"data"`
 }
@@ -190,21 +188,10 @@ func (idp *DouyinIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		return nil, err
 	}
 
-	unionID := strings.TrimSpace(douyinUserInfo.Data.UnionId)
-	openFromData := strings.TrimSpace(douyinUserInfo.Data.OpenId)
-	tokOpen := ""
-	if x := token.Extra("open_id"); x != nil {
-		if s, ok := x.(string); ok {
-			tokOpen = strings.TrimSpace(s)
-		}
-	}
-	openID := stableIDChain(openFromData, tokOpen)
-	idStr := oauthStableID("", unionID, openID, "", "")
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", "", unionID, openID, ""),
-		DisplayName: displayNameFromNickname(douyinUserInfo.Data.Nickname, "", "", "", idStr),
-		UnionId:     unionID,
+		Id:          douyinUserInfo.Data.OpenId,
+		Username:    douyinUserInfo.Data.OpenId,
+		DisplayName: douyinUserInfo.Data.Nickname,
 		AvatarUrl:   douyinUserInfo.Data.Avatar,
 	}
 	return &userInfo, nil

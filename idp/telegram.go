@@ -161,12 +161,10 @@ func (idp *TelegramIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		displayName = strconv.FormatInt(userId, 10)
 	}
 
-	uidStr := strconv.FormatInt(userId, 10)
-	idStr := oauthStableID(uidStr, "", "", username, "")
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(username, uidStr, "", "", ""),
-		DisplayName: displayNameFromNickname("", displayName, username, "", idStr),
+		Id:          strconv.FormatInt(userId, 10),
+		Username:    username,
+		DisplayName: displayName,
 		AvatarUrl:   photoUrl,
 	}
 

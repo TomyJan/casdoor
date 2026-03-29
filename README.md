@@ -1,149 +1,88 @@
-# Casdoor
+<h1 align="center" style="border-bottom: none;">📦⚡️ Casdoor</h1>
+<h3 align="center">An open-source AI-first Identity and Access Management (IAM) /AI MCP gateway and auth server with web UI supporting MCP, A2A, OAuth 2.1, OIDC, SAML, CAS, LDAP, SCIM, WebAuthn, TOTP, MFA, Face ID, Google Workspace, Azure AD</h3>
+<p align="center">
+  <a href="#badge">
+    <img alt="semantic-release" src="https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg">
+  </a>
+  <a href="https://hub.docker.com/r/casbin/casdoor">
+    <img alt="docker pull casbin/casdoor" src="https://img.shields.io/docker/pulls/casbin/casdoor.svg">
+  </a>
+  <a href="https://github.com/casdoor/casdoor/actions/workflows/build.yml">
+    <img alt="GitHub Workflow Status (branch)" src="https://github.com/casdoor/casdoor/workflows/Build/badge.svg?style=flat-square">
+  </a>
+  <a href="https://github.com/casdoor/casdoor/releases/latest">
+    <img alt="GitHub Release" src="https://img.shields.io/github/v/release/casdoor/casdoor.svg">
+  </a>
+  <a href="https://hub.docker.com/r/casbin/casdoor">
+    <img alt="Docker Image Version (latest semver)" src="https://img.shields.io/badge/Docker%20Hub-latest-brightgreen">
+  </a>
+</p>
 
-开源身份与访问管理（IAM）服务，带 Web 管理界面，支持 OAuth/OIDC、SAML、LDAP 等多种协议。
+<p align="center">
+  <a href="https://goreportcard.com/report/github.com/casdoor/casdoor">
+    <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/casdoor/casdoor?style=flat-square">
+  </a>
+  <a href="https://github.com/casdoor/casdoor/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/casdoor/casdoor?style=flat-square" alt="license">
+  </a>
+  <a href="https://github.com/casdoor/casdoor/issues">
+    <img alt="GitHub issues" src="https://img.shields.io/github/issues/casdoor/casdoor?style=flat-square">
+  </a>
+  <a href="#">
+    <img alt="GitHub stars" src="https://img.shields.io/github/stars/casdoor/casdoor?style=flat-square">
+  </a>
+  <a href="https://github.com/casdoor/casdoor/network">
+    <img alt="GitHub forks" src="https://img.shields.io/github/forks/casdoor/casdoor?style=flat-square">
+  </a>
+  <a href="https://crowdin.com/project/casdoor-site">
+    <img alt="Crowdin" src="https://badges.crowdin.net/casdoor-site/localized.svg">
+  </a>
+  <a href="https://discord.gg/5rPsrAzK7S">
+    <img alt="Discord" src="https://img.shields.io/discord/1022748306096537660?style=flat-square&logo=discord&label=discord&color=5865F2">
+  </a>
+</p>
 
----
+## Online demo
 
-把 [我的 PR](https://github.com/casdoor/casdoor/pull/4974) 关掉再 [自己交一个 PR](https://github.com/casdoor/casdoor/pull/5119) 是何意味?
+- Read-only site: https://door.casdoor.com (any modification operation will fail)
+- Writable site: https://demo.casdoor.com (original data will be restored for every 5 minutes)
 
-[用昵称当用户名](https://github.com/casdoor/casdoor/pull/4975) , 还有我懒得说的其他平台明明给了用户 UID 还要用用户名当 ID 何意味?
+## Documentation
 
-当个 Contributor 以为自己是 CN 体制内领导吗?
+https://casdoor.org
 
----
+## Install
 
-下文是**快速上手**；完整安装、配置、高可用与集成说明请以官方文档为准。
+- By source code: https://casdoor.org/docs/basic/server-installation
+- By Docker: https://casdoor.org/docs/basic/try-with-docker
+- By Kubernetes Helm: https://casdoor.org/docs/basic/try-with-helm
 
----
+## How to connect to Casdoor?
 
-## 本地开发
+https://casdoor.org/docs/how-to-connect/overview
 
-### 环境要求
+## Casdoor Public API
 
-| 组件 | 说明 |
-|------|------|
-| Go | 与 `go.mod` 中版本一致（当前为 Go 1.25 系） |
-| Node.js | 建议 LTS（如 20.x），用于前端 |
-| Yarn | 前端包管理（勿用 npm 安装，见 `web/package.json`） |
-| MySQL | 默认使用 MySQL，连接串见 `conf/app.conf` |
+- Docs: https://casdoor.org/docs/basic/public-api
+- Swagger: https://door.casdoor.com/swagger
 
-### 安装依赖
+## Integrations
 
-在项目根目录：
+https://casdoor.org/docs/category/integrations
 
-```bash
-go mod download
-```
+## How to contact?
 
-```bash
-cd web
-yarn
-```
+- Discord: https://discord.gg/5rPsrAzK7S
+- Contact: https://casdoor.org/help
 
-### 准备数据库
+## Contribute
 
-按 `conf/app.conf` 中的 `dataSourceName`、`dbName` 创建数据库与用户（默认示例为本地 MySQL、`casdoor` 库）。若账号密码与配置文件不一致，请修改 `conf/app.conf` 后再启动。
+For casdoor, if you have any questions, you can give Issues, or you can also directly start Pull Requests(but we recommend giving issues first to communicate with the community).
 
-### 运行
+### I18n translation
 
-需要**两个终端**：
+If you are contributing to casdoor, please note that we use [Crowdin](https://crowdin.com/project/casdoor-site) as translating platform and i18next as translating tool. When you add some words using i18next in the `web/` directory, please remember to add what you have added to the `web/src/locales/en/data.json` file.
 
-1. **后端**（默认监听 `8000`）：
+## License
 
-   ```bash
-   go run ./main.go
-   ```
-
-2. **前端开发服务器**（默认 `7001`，并将 API 代理到本机 `8000`）：
-
-   ```bash
-   cd web
-   yarn start
-   ```
-
-浏览器访问：**http://localhost:7001**。开发环境下前端会把请求转发到后端（见 `web/craco.config.js`）。
-
-仅验证后端或构建产物时，可直接访问 **http://localhost:8000**（需已构建前端并嵌入，或使用下方 Docker 镜像）。
-
-### 本地构建（可选）
-
-```bash
-# 前端静态资源
-cd web && yarn run build && cd ..
-
-# 后端二进制
-go build -o bin/manager main.go
-```
-
----
-
-## 生产环境（Docker）
-
-本仓库 CI 在发版时会构建并推送两个镜像（命名空间以 [Docker Hub](https://hub.docker.com/u/tomyjan) 为准，标签含版本号与 `latest`）：
-
-| 镜像 | Dockerfile 目标 | 用途简述 |
-|------|-----------------|----------|
-| `tomyjan/casdoor` | `STANDARD` | 仅 Casdoor 服务进程，**需外置数据库**（生产常用）。 |
-| `tomyjan/casdoor-all-in-one` | `ALLINONE` | 一体化镜像（内置依赖更多，适合快速试用；生产选型见官方文档）。 |
-
-拉取示例：
-
-```bash
-docker pull tomyjan/casdoor:latest
-docker pull tomyjan/casdoor-all-in-one:latest
-```
-
-生产环境务必挂载配置、设置数据库地址与安全参数；具体环境变量与卷挂载见官方文档。
-
-### 使用本仓库的 docker compose
-
-在仓库根目录（会构建镜像并启动 MySQL + Casdoor）：
-
-```bash
-docker compose up -d
-```
-
-默认将 Casdoor 映射到本机 **8000**，MySQL **3306**。首次启动示例中带有 `--createDatabase=true`（见 `docker-compose.yml`）。配置目录挂载为 `./conf`，可按需修改后重启。
-
-查看日志：
-
-```bash
-docker compose logs -f casdoor
-```
-
-停止：
-
-```bash
-docker compose down
-```
-
-### 镜像构建说明
-
-根目录 `Dockerfile` 与上文两个镜像一一对应；本地可分别构建：
-
-```bash
-docker build --target STANDARD -t casdoor:local .
-docker build --target ALLINONE -t casdoor-all-in-one:local .
-```
-
-CI 中已关闭上游「同步 `casdoor-helm` 仓库并推 Helm OCI」步骤；若需自有 Helm 流程，请自行维护 chart 或参考 [官方 Helm 文档](https://casdoor.org/docs/basic/try-with-helm)。
-
----
-
-## 更多资料
-
-| 主题 | 链接 |
-|------|------|
-| 源码安装与配置 | https://casdoor.org/docs/basic/server-installation |
-| Docker 试用与说明 | https://casdoor.org/docs/basic/try-with-docker |
-| Helm / Kubernetes | https://casdoor.org/docs/basic/try-with-helm |
-| 如何接入应用 | https://casdoor.org/docs/how-to-connect/overview |
-| 公开 API 与 Swagger | https://casdoor.org/docs/basic/public-api |
-
-在线演示与完整文档入口：**https://casdoor.org**
-
----
-
-## 许可证
-
-[Apache-2.0](LICENSE)
+[Apache-2.0](https://github.com/casdoor/casdoor/blob/master/LICENSE)

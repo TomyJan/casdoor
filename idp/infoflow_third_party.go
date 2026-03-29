@@ -175,11 +175,10 @@ func (idp *InfoflowIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 	if infoResp.Errcode != 0 {
 		return nil, fmt.Errorf("userInfoResp.errcode = %d, userInfoResp.errmsg = %s", infoResp.Errcode, infoResp.Errmsg)
 	}
-	idStr := oauthStableID(userResp.UserId, infoResp.Imid, "", "", infoResp.Email)
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", userResp.UserId, "", "", infoResp.Email),
-		DisplayName: displayNameFromNickname(infoResp.Name, "", "", infoResp.Email, idStr),
+		Id:          infoResp.Imid,
+		Username:    infoResp.Name,
+		DisplayName: infoResp.Name,
 		Email:       infoResp.Email,
 	}
 

@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: casdoor-container
-          image: tomyjan/casdoor:latest
+          image: casbin/casdoor:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

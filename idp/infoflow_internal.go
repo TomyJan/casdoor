@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 
 	"golang.org/x/oauth2"
 )
@@ -180,12 +179,10 @@ func (idp *InfoflowInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserIn
 	if infoResp.Errcode != 0 {
 		return nil, fmt.Errorf("userInfoResp.errcode = %d, userInfoResp.errmsg = %s", infoResp.Errcode, infoResp.Errmsg)
 	}
-	imidStr := strconv.Itoa(infoResp.Imid)
-	idStr := oauthStableID(infoResp.UserId, imidStr, "", "", infoResp.Email)
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", infoResp.UserId, "", "", infoResp.Email),
-		DisplayName: displayNameFromNickname(infoResp.Name, "", "", infoResp.Email, idStr),
+		Id:          infoResp.UserId,
+		Username:    infoResp.UserId,
+		DisplayName: infoResp.Name,
 		AvatarUrl:   infoResp.Avatar,
 		Email:       infoResp.Email,
 	}

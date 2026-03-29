@@ -208,38 +208,3 @@ func isGothSupport(provider string) bool {
 	}
 	return false
 }
-
-// firstNonEmpty returns the first non-empty string after trimming whitespace.
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if s := strings.TrimSpace(v); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-// oauthStableID builds Id: userid > unionid > openid > username > email (stops at email; no weaker fallbacks).
-// When one logical slot has multiple API sources (e.g. user_id from token vs userinfo), merge them with
-// stableIDChain (or firstNonEmpty) into the appropriate argument, most trusted first.
-func oauthStableID(userid, unionid, openid, username, email string) string {
-	return firstNonEmpty(userid, unionid, openid, username, email)
-}
-
-// stableIDChain returns the first non-empty string among peer id-like values in preference order.
-func stableIDChain(candidates ...string) string {
-	return firstNonEmpty(candidates...)
-}
-
-// oauthUsernamePreferLogin uses provider login/handle first, then userid > unionid > openid > email.
-func oauthUsernamePreferLogin(providerLogin, userid, unionid, openid, email string) string {
-	if s := strings.TrimSpace(providerLogin); s != "" {
-		return s
-	}
-	return firstNonEmpty(userid, unionid, openid, email)
-}
-
-// displayNameFromNickname prefers nickname-style fields, then name, login, email, id.
-func displayNameFromNickname(nickname, name, login, email, idFallback string) string {
-	return firstNonEmpty(nickname, name, login, email, idFallback)
-}

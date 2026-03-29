@@ -184,12 +184,10 @@ func (idp *BilibiliIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, fmt.Errorf("userinfo.Errcode = %d, userinfo.Errmsg = %s", bUserInfoResponse.Code, bUserInfoResponse.Message)
 	}
 
-	openID := bUserInfoResponse.Data.OpenId
-	idStr := oauthStableID("", "", openID, "", "")
 	userInfo := &UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", "", "", openID, ""),
-		DisplayName: displayNameFromNickname(bUserInfoResponse.Data.Name, "", "", "", idStr),
+		Id:          bUserInfoResponse.Data.OpenId,
+		Username:    bUserInfoResponse.Data.Name,
+		DisplayName: bUserInfoResponse.Data.Name,
 		AvatarUrl:   bUserInfoResponse.Data.Face,
 	}
 

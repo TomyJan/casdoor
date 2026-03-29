@@ -149,15 +149,11 @@ func (idp *AdfsIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 	sid, _ := idToken.Get("sid")
 	upn, _ := idToken.Get("upn")
 	name, _ := idToken.Get("unique_name")
-	sidStr := sid.(string)
-	nameStr := name.(string)
-	upnStr := upn.(string)
-	idStr := oauthStableID(sidStr, "", "", "", upnStr)
 	userinfo := &UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(nameStr, sidStr, "", "", upnStr),
-		DisplayName: displayNameFromNickname("", nameStr, nameStr, upnStr, idStr),
-		Email:       upnStr,
+		Id:          sid.(string),
+		Username:    name.(string),
+		DisplayName: name.(string),
+		Email:       upn.(string),
 	}
 	return userinfo, nil
 }

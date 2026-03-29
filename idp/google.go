@@ -154,11 +154,10 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		if !ok {
 			return nil, errors.New("invalid googleIdToken")
 		}
-		idStr := oauthStableID(googleIdToken.Sub, "", "", "", googleIdToken.Email)
 		userInfo := UserInfo{
-			Id:          idStr,
-			Username:    oauthUsernamePreferLogin(googleIdToken.Email, googleIdToken.Sub, "", "", googleIdToken.Email),
-			DisplayName: displayNameFromNickname("", googleIdToken.Name, "", googleIdToken.Email, idStr),
+			Id:          googleIdToken.Sub,
+			Username:    googleIdToken.Email,
+			DisplayName: googleIdToken.Name,
 			Email:       googleIdToken.Email,
 			AvatarUrl:   googleIdToken.Picture,
 		}
@@ -221,11 +220,10 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		phoneNumber = fmt.Sprintf("%d", phoneNumberParsed.GetNationalNumber())
 	}
 
-	idStr := oauthStableID(googleUserInfo.Id, "", "", "", googleUserInfo.Email)
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(googleUserInfo.Email, googleUserInfo.Id, "", "", googleUserInfo.Email),
-		DisplayName: displayNameFromNickname("", googleUserInfo.Name, "", googleUserInfo.Email, idStr),
+		Id:          googleUserInfo.Id,
+		Username:    googleUserInfo.Email,
+		DisplayName: googleUserInfo.Name,
 		Email:       googleUserInfo.Email,
 		AvatarUrl:   googleUserInfo.Picture,
 		Phone:       phoneNumber,

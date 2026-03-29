@@ -145,29 +145,24 @@ func (idp *WeChatMobileIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, 
 		return nil, err
 	}
 
-	openID := wechatUserInfo.Openid
-	if openID == "" {
-		if x := token.Extra("Openid"); x != nil {
-			if s, ok := x.(string); ok {
-				openID = s
-			}
-		}
-	}
 	// Check for error response
-	if openID == "" {
+	if wechatUserInfo.Openid == "" {
 		return nil, fmt.Errorf("failed to get user info: %s", buf.String())
 	}
 
-	idStr := oauthStableID("", wechatUserInfo.Unionid, openID, "", "")
+	id := wechatUserInfo.Unionid
+	if id == "" {
+		id = wechatUserInfo.Openid
+	}
+
 	extra := make(map[string]string)
-	extra["wechat_unionid"] = wechatUserInfo.Unionid
+	extra["wechat_unionid"] = wechatUserInfo.Openid
 	// For WeChat, different appId corresponds to different openId
-	extra[BuildWechatOpenIdKey(idp.Config.ClientID)] = openID
+	extra[BuildWechatOpenIdKey(idp.Config.ClientID)] = wechatUserInfo.Openid
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", "", wechatUserInfo.Unionid, openID, ""),
-		DisplayName: displayNameFromNickname(wechatUserInfo.Nickname, "", "", "", idStr),
-		UnionId:     wechatUserInfo.Unionid,
+		Id:          id,
+		Username:    wechatUserInfo.Nickname,
+		DisplayName: wechatUserInfo.Nickname,
 		AvatarUrl:   wechatUserInfo.Headimgurl,
 		Extra:       extra,
 	}
