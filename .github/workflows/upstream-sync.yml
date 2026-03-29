@@ -71,36 +71,42 @@ jobs:
           git fetch upstream "${UPSTREAM_BRANCH}"
           git fetch origin "${TARGET_BRANCH}"
 
-          # Build sync branch from origin target branch, then apply upstream delta as a squash patch.
-          # This avoids pushing upstream commit history that may contain workflow-file changes.
-          git checkout -B "${SYNC_BRANCH}" "origin/${TARGET_BRANCH}"
+          AHEAD_COUNT=$(git rev-list --count "origin/${TARGET_BRANCH}..upstream/${UPSTREAM_BRANCH}")
+          echo "ahead_count=${AHEAD_COUNT}" >> "$GITHUB_OUTPUT"
 
-          PATCH_FILE="/tmp/upstream-sync.patch"
+          if [ "${AHEAD_COUNT}" = "0" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=no_changes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ "${EXCLUDE_WORKFLOW_FILES}" = "true" ]; then
-            git diff --binary --no-color \
-              "origin/${TARGET_BRANCH}" "upstream/${UPSTREAM_BRANCH}" \
-              -- . ':(exclude).github/workflows/**' > "${PATCH_FILE}"
-          else
-            git diff --binary --no-color \
-              "origin/${TARGET_BRANCH}" "upstream/${UPSTREAM_BRANCH}" \
-              > "${PATCH_FILE}"
+            if git diff --name-only "origin/${TARGET_BRANCH}..upstream/${UPSTREAM_BRANCH}" -- .github/workflows | grep -q .; then
+              echo "pushed=false" >> "$GITHUB_OUTPUT"
+              echo "skip_reason=workflow_changes" >> "$GITHUB_OUTPUT"
+              echo "Upstream contains .github/workflows changes. Skip to preserve original commits without PAT."
+              exit 0
+            fi
           fi
 
-          if [ -s "${PATCH_FILE}" ]; then
-            git apply --index "${PATCH_FILE}"
-            git commit -m "chore: sync from upstream ${UPSTREAM_BRANCH}"
-          fi
+          # Preserve upstream original commits by making sync branch point to upstream branch tip.
+          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
 
           if ! git push origin "${SYNC_BRANCH}" --force; then
             echo "Push failed. If this is due to .github/workflows permissions, keep EXCLUDE_WORKFLOW_FILES=true or use a PAT token workflow."
             exit 1
           fi
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=none" >> "$GITHUB_OUTPUT"
 
-          AHEAD_COUNT=$(git rev-list --count "origin/${TARGET_BRANCH}..${SYNC_BRANCH}")
-          echo "ahead_count=${AHEAD_COUNT}" >> "$GITHUB_OUTPUT"
+      - name: Skipped due to workflow-file changes upstream
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.skip_reason == 'workflow_changes'
+        run: |
+          echo "Skipped: upstream includes .github/workflows changes."
+          echo "Without PAT/workflow scope, preserving original upstream commits and excluding workflow files cannot both be satisfied."
 
       - name: Create sync PR
-        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count != '0'
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count != '0' && steps.prepare.outputs.pushed == 'true'
         id: create_pr
         uses: actions/github-script@v7
         env:
@@ -121,5 +127,5 @@ jobs:
             await github.rest.pulls.create({ owner, repo, title, head, base, body });
 
       - name: No upstream changes
-        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count == '0'
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.skip_reason == 'no_changes'
         run: echo "No new upstream commits to sync."
