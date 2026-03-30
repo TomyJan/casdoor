@@ -3,7 +3,7 @@ name: Sync Upstream
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 * * * *"
   push:
     branches: [ master ]
     paths:
