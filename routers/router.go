@@ -133,6 +133,7 @@ func InitAPI() {
 	web.Router("/api/delete-agent", &controllers.ApiController{}, "POST:DeleteAgent")
 
 	web.Router("/api/get-servers", &controllers.ApiController{}, "GET:GetServers")
+	web.Router("/api/get-online-servers", &controllers.ApiController{}, "GET:GetOnlineServers")
 	web.Router("/api/get-server", &controllers.ApiController{}, "GET:GetServer")
 	web.Router("/api/update-server", &controllers.ApiController{}, "POST:UpdateServer")
 	web.Router("/api/add-server", &controllers.ApiController{}, "POST:AddServer")
@@ -144,6 +145,8 @@ func InitAPI() {
 	web.Router("/api/update-entry", &controllers.ApiController{}, "POST:UpdateEntry")
 	web.Router("/api/add-entry", &controllers.ApiController{}, "POST:AddEntry")
 	web.Router("/api/delete-entry", &controllers.ApiController{}, "POST:DeleteEntry")
+
+	web.Router("/api/v1/traces", &controllers.ApiController{}, "POST:AddTrace")
 
 	web.Router("/api/get-global-sites", &controllers.ApiController{}, "GET:GetGlobalSites")
 	web.Router("/api/get-sites", &controllers.ApiController{}, "GET:GetSites")
@@ -314,7 +317,6 @@ func InitAPI() {
 	web.Router("/api/get-webhook-events", &controllers.ApiController{}, "GET:GetWebhookEvents")
 	web.Router("/api/get-webhook-event-detail", &controllers.ApiController{}, "GET:GetWebhookEvent")
 	web.Router("/api/replay-webhook-event", &controllers.ApiController{}, "POST:ReplayWebhookEvent")
-	web.Router("/api/replay-webhook-events", &controllers.ApiController{}, "POST:ReplayWebhookEvents")
 	web.Router("/api/delete-webhook-event", &controllers.ApiController{}, "POST:DeleteWebhookEvent")
 
 	web.Router("/api/get-tickets", &controllers.ApiController{}, "GET:GetTickets")
