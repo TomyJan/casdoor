@@ -24,6 +24,7 @@ import (
 	"github.com/casdoor/casdoor/i18n"
 	"github.com/casdoor/casdoor/idp"
 	"github.com/casdoor/casdoor/idv"
+	"github.com/casdoor/casdoor/log"
 	"github.com/casdoor/casdoor/pp"
 	"github.com/casdoor/casdoor/util"
 	"github.com/xorm-io/core"
@@ -80,6 +81,8 @@ type Provider struct {
 	ProviderUrl string `xorm:"varchar(200)" json:"providerUrl"`
 	EnableProxy bool   `json:"enableProxy"`
 	EnablePkce  bool   `json:"enablePkce"`
+
+	State string `xorm:"varchar(100)" json:"state"`
 }
 
 func GetMaskedProvider(provider *Provider, isMaskEnabled bool) *Provider {
@@ -231,6 +234,10 @@ func UpdateProvider(id string, provider *Provider) (bool, error) {
 		}
 	}
 
+	if err := fillOpenClawProviderDefaults(provider); err != nil {
+		return false, err
+	}
+
 	if name != provider.Name {
 		err := providerChangeTrigger(name, provider.Name)
 		if err != nil {
@@ -256,6 +263,10 @@ func UpdateProvider(id string, provider *Provider) (bool, error) {
 		return false, err
 	}
 
+	if affected != 0 {
+		refreshLogProviderRuntime(util.GetId(owner, name), provider)
+	}
+
 	return affected != 0, nil
 }
 
@@ -272,9 +283,17 @@ func AddProvider(provider *Provider) (bool, error) {
 		}
 	}
 
+	if err := fillOpenClawProviderDefaults(provider); err != nil {
+		return false, err
+	}
+
 	affected, err := ormer.Engine.Insert(provider)
 	if err != nil {
 		return false, err
+	}
+
+	if affected != 0 {
+		refreshLogProviderRuntime("", provider)
 	}
 
 	return affected != 0, nil
@@ -284,6 +303,10 @@ func DeleteProvider(provider *Provider) (bool, error) {
 	affected, err := ormer.Engine.ID(core.PK{provider.Owner, provider.Name}).Delete(&Provider{})
 	if err != nil {
 		return false, err
+	}
+
+	if affected != 0 {
+		stopLogProviderRuntime(provider.GetId())
 	}
 
 	return affected != 0, nil
@@ -609,4 +632,57 @@ func GetIdvProviderFromProvider(provider *Provider) idv.IdvProvider {
 		return nil
 	}
 	return idv.GetIdvProvider(provider.Type, provider.ClientId, provider.ClientSecret, provider.Endpoint)
+}
+
+func GetLogProviderFromProvider(provider *Provider) (log.LogProvider, error) {
+	if provider.Category != "Log" {
+		return nil, fmt.Errorf("provider %s category is not Log", provider.Name)
+	}
+
+	if provider.Type == "Casdoor Permission Log" {
+		return log.NewPermissionLogProvider(provider.Name, func(owner, createdTime, providerName, message string) error {
+			name := log.GenerateEntryName()
+			entry := &Entry{
+				Owner:       owner,
+				Name:        name,
+				CreatedTime: createdTime,
+				UpdatedTime: createdTime,
+				DisplayName: name,
+				Provider:    providerName,
+				Application: CasdoorApplication,
+				Message:     message,
+			}
+			_, err := AddEntry(entry)
+			return err
+		}), nil
+	}
+
+	if provider.Type == "Agent" && provider.SubType == "OpenClaw" {
+		providerName := provider.Name
+		return log.NewOpenClawProvider(providerName, func(entryType, message, clientIp, userAgent string) error {
+			// Bypass: metrics entries are temporarily not persisted to the database.
+			if entryType == "metrics" {
+				return nil
+			}
+
+			name := log.GenerateEntryName()
+			currentTime := util.GetCurrentTime()
+			entry := &Entry{
+				Owner:       CasdoorOrganization,
+				Name:        name,
+				CreatedTime: currentTime,
+				UpdatedTime: currentTime,
+				DisplayName: name,
+				Provider:    providerName,
+				Type:        entryType,
+				ClientIp:    clientIp,
+				UserAgent:   userAgent,
+				Message:     message,
+			}
+			_, err := AddEntry(entry)
+			return err
+		}), nil
+	}
+
+	return log.GetLogProvider(provider.Type, provider.Host, provider.Port, provider.Title)
 }

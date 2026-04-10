@@ -134,10 +134,13 @@ func InitAPI() {
 
 	web.Router("/api/get-servers", &controllers.ApiController{}, "GET:GetServers")
 	web.Router("/api/get-online-servers", &controllers.ApiController{}, "GET:GetOnlineServers")
+	web.Router("/api/sync-intranet-servers", &controllers.ApiController{}, "POST:SyncIntranetServers")
 	web.Router("/api/get-server", &controllers.ApiController{}, "GET:GetServer")
 	web.Router("/api/update-server", &controllers.ApiController{}, "POST:UpdateServer")
+	web.Router("/api/sync-mcp-tool", &controllers.ApiController{}, "POST:SyncMcpTool")
 	web.Router("/api/add-server", &controllers.ApiController{}, "POST:AddServer")
 	web.Router("/api/delete-server", &controllers.ApiController{}, "POST:DeleteServer")
+	web.Router("/api/server/:owner/:name", &controllers.ApiController{}, "GET:ProxyServer")
 	web.Router("/api/server/:owner/:name", &controllers.ApiController{}, "POST:ProxyServer")
 
 	web.Router("/api/get-entries", &controllers.ApiController{}, "GET:GetEntries")
@@ -146,7 +149,9 @@ func InitAPI() {
 	web.Router("/api/add-entry", &controllers.ApiController{}, "POST:AddEntry")
 	web.Router("/api/delete-entry", &controllers.ApiController{}, "POST:DeleteEntry")
 
-	web.Router("/api/v1/traces", &controllers.ApiController{}, "POST:AddTrace")
+	web.Router("/api/v1/traces", &controllers.ApiController{}, "POST:AddOtlpTrace")
+	web.Router("/api/v1/metrics", &controllers.ApiController{}, "POST:AddOtlpMetrics")
+	web.Router("/api/v1/logs", &controllers.ApiController{}, "POST:AddOtlpLogs")
 
 	web.Router("/api/get-global-sites", &controllers.ApiController{}, "GET:GetGlobalSites")
 	web.Router("/api/get-sites", &controllers.ApiController{}, "GET:GetSites")
@@ -242,6 +247,7 @@ func InitAPI() {
 	web.Router("/api/update-product", &controllers.ApiController{}, "POST:UpdateProduct")
 	web.Router("/api/add-product", &controllers.ApiController{}, "POST:AddProduct")
 	web.Router("/api/delete-product", &controllers.ApiController{}, "POST:DeleteProduct")
+	web.Router("/api/buy-product", &controllers.ApiController{}, "POST:BuyProduct")
 
 	web.Router("/api/get-orders", &controllers.ApiController{}, "GET:GetOrders")
 	web.Router("/api/get-user-orders", &controllers.ApiController{}, "GET:GetUserOrders")

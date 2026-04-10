@@ -15,63 +15,134 @@
 package controllers
 
 import (
-	"fmt"
-	"io"
-	"strings"
-
-	"github.com/casdoor/casdoor/object"
+	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/casdoor/casdoor/util"
 )
 
-// AddOtlpEntry
-// @Title AddTrace
+// @Title AddOtlpTrace
 // @Tag OTLP API
 // @Description receive otlp trace protobuf
 // @Success 200 {object} string
 // @router /api/v1/traces [post]
-func (c *ApiController) AddTrace() {
-	if !strings.HasPrefix(c.Ctx.Input.Header("Content-Type"), "application/x-protobuf") {
-		c.Ctx.Output.SetStatus(415)
-		c.Ctx.Output.Body([]byte("unsupported content type"))
+func (c *ApiController) AddOtlpTrace() {
+	body := readProtobufBody(c.Ctx)
+	if body == nil {
 		return
 	}
-
-	body, err := io.ReadAll(c.Ctx.Request.Body)
+	provider, status, err := resolveOpenClawProvider(c.Ctx)
 	if err != nil {
-		c.Ctx.Output.SetStatus(400)
-		c.Ctx.Output.Body([]byte("read body failed"))
+		responseOtlpError(c.Ctx, status, body, "%s", err.Error())
 		return
 	}
 
 	var req coltracepb.ExportTraceServiceRequest
-
 	if err := proto.Unmarshal(body, &req); err != nil {
-		c.Ctx.Output.SetStatus(400)
-		c.Ctx.Output.Body([]byte(fmt.Sprintf("bad protobuf: %v", err)))
+		responseOtlpError(c.Ctx, 400, body, "bad protobuf: %v", err)
 		return
 	}
 
-	message, err := protojson.Marshal(&req)
+	message, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(&req)
 	if err != nil {
-		c.Ctx.Output.SetStatus(500)
-		c.Ctx.Output.Body([]byte(fmt.Sprintf("marshal trace failed: %v", err)))
+		responseOtlpError(c.Ctx, 500, body, "marshal trace failed: %v", err)
 		return
 	}
 
-	entry := object.NewTraceEntry(message)
-
-	if _, err := object.AddEntry(entry); err != nil {
-		c.Ctx.Output.SetStatus(500)
-		c.Ctx.Output.Body([]byte(fmt.Sprintf("save trace failed: %v", err)))
+	clientIp := util.GetClientIpFromRequest(c.Ctx.Request)
+	userAgent := c.Ctx.Request.Header.Get("User-Agent")
+	if err := provider.AddTrace(message, clientIp, userAgent); err != nil {
+		responseOtlpError(c.Ctx, 500, body, "save trace failed: %v", err)
 		return
 	}
 
-	resp := &coltracepb.ExportTraceServiceResponse{}
-	respBytes, _ := proto.Marshal(resp)
-
+	resp, _ := proto.Marshal(&coltracepb.ExportTraceServiceResponse{})
 	c.Ctx.Output.Header("Content-Type", "application/x-protobuf")
 	c.Ctx.Output.SetStatus(200)
-	c.Ctx.Output.Body(respBytes)
+	c.Ctx.Output.Body(resp)
+}
+
+// @Title AddOtlpMetrics
+// @Tag OTLP API
+// @Description receive otlp metrics protobuf
+// @Success 200 {object} string
+// @router /api/v1/metrics [post]
+func (c *ApiController) AddOtlpMetrics() {
+	body := readProtobufBody(c.Ctx)
+	if body == nil {
+		return
+	}
+	provider, status, err := resolveOpenClawProvider(c.Ctx)
+	if err != nil {
+		responseOtlpError(c.Ctx, status, body, "%s", err.Error())
+		return
+	}
+
+	var req colmetricspb.ExportMetricsServiceRequest
+	if err := proto.Unmarshal(body, &req); err != nil {
+		responseOtlpError(c.Ctx, 400, body, "bad protobuf: %v", err)
+		return
+	}
+
+	message, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(&req)
+	if err != nil {
+		responseOtlpError(c.Ctx, 500, body, "marshal metrics failed: %v", err)
+		return
+	}
+
+	clientIp := util.GetClientIpFromRequest(c.Ctx.Request)
+	userAgent := c.Ctx.Request.Header.Get("User-Agent")
+	if err := provider.AddMetrics(message, clientIp, userAgent); err != nil {
+		responseOtlpError(c.Ctx, 500, body, "save metrics failed: %v", err)
+		return
+	}
+
+	resp, _ := proto.Marshal(&colmetricspb.ExportMetricsServiceResponse{})
+	c.Ctx.Output.Header("Content-Type", "application/x-protobuf")
+	c.Ctx.Output.SetStatus(200)
+	c.Ctx.Output.Body(resp)
+}
+
+// @Title AddOtlpLogs
+// @Tag OTLP API
+// @Description receive otlp logs protobuf
+// @Success 200 {object} string
+// @router /api/v1/logs [post]
+func (c *ApiController) AddOtlpLogs() {
+	body := readProtobufBody(c.Ctx)
+	if body == nil {
+		return
+	}
+	provider, status, err := resolveOpenClawProvider(c.Ctx)
+	if err != nil {
+		responseOtlpError(c.Ctx, status, body, "%s", err.Error())
+		return
+	}
+
+	var req collogspb.ExportLogsServiceRequest
+	if err := proto.Unmarshal(body, &req); err != nil {
+		responseOtlpError(c.Ctx, 400, body, "bad protobuf: %v", err)
+		return
+	}
+
+	message, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(&req)
+	if err != nil {
+		responseOtlpError(c.Ctx, 500, body, "marshal logs failed: %v", err)
+		return
+	}
+
+	clientIp := util.GetClientIpFromRequest(c.Ctx.Request)
+	userAgent := c.Ctx.Request.Header.Get("User-Agent")
+	if err := provider.AddLogs(message, clientIp, userAgent); err != nil {
+		responseOtlpError(c.Ctx, 500, body, "save logs failed: %v", err)
+		return
+	}
+
+	resp, _ := proto.Marshal(&collogspb.ExportLogsServiceResponse{})
+	c.Ctx.Output.Header("Content-Type", "application/x-protobuf")
+	c.Ctx.Output.SetStatus(200)
+	c.Ctx.Output.Body(resp)
 }

@@ -28,24 +28,13 @@ type Entry struct {
 	UpdatedTime string `xorm:"varchar(100)" json:"updatedTime"`
 	DisplayName string `xorm:"varchar(100)" json:"displayName"`
 
-	Url         string `xorm:"varchar(500)" json:"url"`
-	Token       string `xorm:"varchar(500)" json:"token"`
+	Provider    string `xorm:"varchar(100)" json:"provider"`
 	Application string `xorm:"varchar(100)" json:"application"`
-	Message     string `xorm:"mediumtext" json:"message"`
-}
 
-func NewTraceEntry(message []byte) *Entry {
-	currentTime := util.GetCurrentTime()
-	traceId := fmt.Sprintf("trace_%s_%s", util.GenerateSimpleTimeId(), util.GetRandomName())
-
-	return &Entry{
-		Owner:       CasdoorOrganization,
-		Name:        traceId,
-		CreatedTime: currentTime,
-		UpdatedTime: currentTime,
-		DisplayName: traceId,
-		Message:     string(message),
-	}
+	Type      string `xorm:"varchar(100)" json:"type"`
+	ClientIp  string `xorm:"varchar(100)" json:"clientIp"`
+	UserAgent string `xorm:"varchar(500)" json:"userAgent"`
+	Message   string `xorm:"mediumtext" json:"message"`
 }
 
 func GetEntries(owner string) ([]*Entry, error) {

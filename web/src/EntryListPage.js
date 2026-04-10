@@ -14,26 +14,39 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Table} from "antd";
+import {Button, Popover, Table} from "antd";
 import moment from "moment";
 import * as Setting from "./Setting";
 import * as EntryBackend from "./backend/EntryBackend";
+import * as ProviderBackend from "./backend/ProviderBackend";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
 import PopconfirmModal from "./common/modal/PopconfirmModal";
+import EntryMessageViewer from "./EntryMessageViewer";
 
 class EntryListPage extends BaseListPage {
+  constructor(props) {
+    super(props);
+    this.state = {
+      ...this.state,
+      providerMap: {},
+      providerOwner: "",
+    };
+  }
+
   newEntry() {
-    const randomName = Setting.getRandomName();
+    const randomHex = Math.random().toString(16).slice(2, 18);
     const owner = Setting.getRequestOrganization(this.props.account);
     return {
       owner: owner,
-      name: `entry_${randomName}`,
+      name: randomHex,
       createdTime: moment().format(),
-      displayName: `New Entry - ${randomName}`,
-      url: "",
-      token: "",
+      displayName: randomHex,
+      provider: "",
       application: "",
+      type: "",
+      clientIp: "",
+      userAgent: "",
       message: "",
     };
   }
@@ -74,35 +87,94 @@ class EntryListPage extends BaseListPage {
       });
   }
 
+  getProviders(owner) {
+    if (!owner) {
+      return Promise.resolve({});
+    }
+
+    if (this.state.providerOwner === owner) {
+      return Promise.resolve(this.state.providerMap);
+    }
+
+    return ProviderBackend.getProviders(owner)
+      .then((res) => {
+        if (res.status !== "ok") {
+          return {};
+        }
+
+        const providerMap = {};
+        (res.data || []).forEach((provider) => {
+          if (provider?.category === "Log" && provider?.name) {
+            providerMap[provider.name] = provider;
+          }
+        });
+
+        this.setState({
+          providerMap,
+          providerOwner: owner,
+        });
+
+        return providerMap;
+      })
+      .catch(() => {
+        this.setState({
+          providerMap: {},
+          providerOwner: "",
+        });
+        return {};
+      });
+  }
+
   fetch = (params = {}) => {
     const field = params.searchedColumn, value = params.searchText;
     const sortField = params.sortField, sortOrder = params.sortOrder;
+    const owner = Setting.getRequestOrganization(this.props.account);
     if (!params.pagination) {
       params.pagination = {current: 1, pageSize: 10};
     }
 
     this.setState({loading: true});
-    EntryBackend.getEntries(Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
-      .then((res) => {
-        this.setState({loading: false});
-        if (res.status === "ok") {
-          this.setState({
-            data: res.data,
-            pagination: {
-              ...params.pagination,
-              total: res.data2,
-            },
-            searchText: params.searchText,
-            searchedColumn: params.searchedColumn,
-          });
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to get")}: ${res.msg}`);
-        }
-      });
+    Promise.all([
+      EntryBackend.getEntries(owner, params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder),
+      this.getProviders(owner),
+    ]).then(([res]) => {
+      this.setState({loading: false});
+      if (res.status === "ok") {
+        this.setState({
+          data: res.data,
+          pagination: {
+            ...params.pagination,
+            total: res.data2,
+          },
+          searchText: params.searchText,
+          searchedColumn: params.searchedColumn,
+        });
+      } else {
+        Setting.showMessage("error", `${i18next.t("general:Failed to get")}: ${res.msg}`);
+      }
+    }).catch(error => {
+      this.setState({loading: false});
+      Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
+    });
   };
 
   renderTable(entries) {
     const columns = [
+      {
+        title: i18next.t("general:Organization"),
+        dataIndex: "owner",
+        key: "owner",
+        width: "130px",
+        sorter: true,
+        ...this.getColumnSearchProps("owner"),
+        render: (text) => {
+          return (
+            <Link to={`/organizations/${text}`}>
+              {text}
+            </Link>
+          );
+        },
+      },
       {
         title: i18next.t("general:Name"),
         dataIndex: "name",
@@ -110,7 +182,7 @@ class EntryListPage extends BaseListPage {
         width: "160px",
         sorter: true,
         ...this.getColumnSearchProps("name"),
-        render: (text, record, index) => {
+        render: (text, record) => {
           return (
             <Link to={`/entries/${record.owner}/${text}`}>
               {text}
@@ -119,55 +191,90 @@ class EntryListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("general:Organization"),
-        dataIndex: "owner",
-        key: "owner",
-        width: "130px",
-        sorter: true,
-        ...this.getColumnSearchProps("owner"),
-      },
-      {
         title: i18next.t("general:Created time"),
         dataIndex: "createdTime",
         key: "createdTime",
         width: "180px",
         sorter: true,
-        render: (text, record, index) => {
+        render: (text) => {
           return Setting.getFormattedDate(text);
         },
       },
       {
-        title: i18next.t("general:Display name"),
-        dataIndex: "displayName",
-        key: "displayName",
+        title: i18next.t("general:Provider"),
+        dataIndex: "provider",
+        key: "provider",
+        width: "160px",
         sorter: true,
-        ...this.getColumnSearchProps("displayName"),
-      },
-      {
-        title: i18next.t("general:Listening URL"),
-        dataIndex: "url",
-        key: "url",
-        sorter: true,
-        ...this.getColumnSearchProps("url"),
-        render: (text) => {
+        ...this.getColumnSearchProps("provider"),
+        render: (text, record) => {
           if (!text) {
             return null;
           }
-
           return (
-            <a target="_blank" rel="noreferrer" href={text}>
-              {Setting.getShortText(text, 40)}
-            </a>
+            <Link to={`/providers/${record.owner}/${text}`}>
+              {text}
+            </Link>
           );
         },
       },
       {
-        title: i18next.t("general:Application"),
-        dataIndex: "application",
-        key: "application",
+        title: i18next.t("general:Type"),
+        dataIndex: "type",
+        key: "type",
         width: "140px",
         sorter: true,
-        ...this.getColumnSearchProps("application"),
+        ...this.getColumnSearchProps("type"),
+      },
+      {
+        title: i18next.t("general:Client IP"),
+        dataIndex: "clientIp",
+        key: "clientIp",
+        width: "140px",
+        sorter: true,
+        ...this.getColumnSearchProps("clientIp", (row, highlightContent) => (
+          <a target="_blank" rel="noreferrer" href={`https://db-ip.com/${row.text}`}>
+            {highlightContent}
+          </a>
+        )),
+      },
+      {
+        title: i18next.t("general:User agent"),
+        dataIndex: "userAgent",
+        key: "userAgent",
+        sorter: true,
+        ...this.getColumnSearchProps("userAgent"),
+      },
+      {
+        title: i18next.t("payment:Message"),
+        dataIndex: "message",
+        key: "message",
+        sorter: true,
+        ...this.getColumnSearchProps("message"),
+        render: (text, record) => {
+          if (!text) {
+            return null;
+          }
+          return (
+            <Popover
+              placement="topRight"
+              content={(
+                <div style={{width: Setting.isMobile() ? Math.min(window.innerWidth - 40, 720) : 720}}>
+                  <EntryMessageViewer
+                    entry={record}
+                    provider={this.state.providerMap[record.provider] ?? null}
+                    labelSpan={24}
+                    contentSpan={24}
+                  />
+                </div>
+              )}
+              title=""
+              trigger="hover"
+            >
+              {Setting.getShortText(text, 60)}
+            </Popover>
+          );
+        },
       },
       {
         title: i18next.t("general:Action"),

@@ -44,6 +44,15 @@ export function updateServer(owner, name, server) {
   }).then(res => res.json());
 }
 
+export function syncMcpTool(owner, name, server, isCleared = false) {
+  const newServer = Setting.deepCopy(server);
+  return fetch(`${Setting.ServerUrl}/api/sync-mcp-tool?id=${owner}/${encodeURIComponent(name)}&isCleared=${isCleared ? "1" : "0"}`, {
+    method: "POST",
+    credentials: "include",
+    body: JSON.stringify(newServer),
+  }).then(res => res.json());
+}
+
 export function addServer(server) {
   const newServer = Setting.deepCopy(server);
   return fetch(`${Setting.ServerUrl}/api/add-server`, {
@@ -59,5 +68,13 @@ export function deleteServer(server) {
     method: "POST",
     credentials: "include",
     body: JSON.stringify(newServer),
+  }).then(res => res.json());
+}
+
+export function syncIntranetServers(scanRequest) {
+  return fetch(`${Setting.ServerUrl}/api/sync-intranet-servers`, {
+    method: "POST",
+    credentials: "include",
+    body: JSON.stringify(scanRequest),
   }).then(res => res.json());
 }

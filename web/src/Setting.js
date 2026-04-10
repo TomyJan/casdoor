@@ -455,6 +455,24 @@ export const OtherProviderInfo = {
       url: "https://www.aliyun.com/product/idverification",
     },
   },
+  Log: {
+    "Casdoor Permission Log": {
+      logo: `${StaticBaseUrl}/img/social_default.png`,
+      url: "https://casdoor.org",
+    },
+    "System Log": {
+      logo: `${StaticBaseUrl}/img/social_default.png`,
+      url: "https://en.wikipedia.org/wiki/Syslog",
+    },
+    "Agent": {
+      logo: `${StaticBaseUrl}/img/social_default.png`,
+      url: "",
+    },
+    "SELinux Log": {
+      logo: `${StaticBaseUrl}/img/social_default.png`,
+      url: "https://github.com/SELinuxProject/selinux",
+    },
+  },
 };
 
 export const UserFields = ["owner", "name", "password", "display_name", "id", "type", "email", "phone", "country_code",
@@ -1419,6 +1437,13 @@ export function getProviderTypeOptions(category) {
       {id: "Jumio", name: "Jumio"},
       {id: "Alibaba Cloud", name: "Alibaba Cloud"},
     ]);
+  } else if (category === "Log") {
+    return ([
+      {id: "Casdoor Permission Log", name: "Casdoor Permission Log"},
+      {id: "System Log", name: "System Log"},
+      {id: "Agent", name: "Agent"},
+      {id: "SELinux Log", name: "SELinux Log"},
+    ]);
   } else {
     return [];
   }
@@ -1462,6 +1487,43 @@ function isSigninMethodEnabled(application, signinMethod) {
   } else {
     return false;
   }
+}
+
+export const CaptchaRule = {
+  Always: "Always",
+  Never: "Never",
+  Dynamic: "Dynamic",
+  InternetOnly: "Internet-Only",
+};
+
+export function getCaptchaProviderItems(application) {
+  const providers = application?.providers;
+  if (!providers) {
+    return [];
+  }
+
+  return providers.filter(providerItem => providerItem?.provider?.category === "Captcha");
+}
+
+export function getCaptchaRule(application) {
+  const captchaProviderItems = getCaptchaProviderItems(application);
+  if (captchaProviderItems.some(providerItem => providerItem.rule === CaptchaRule.Always)) {
+    return CaptchaRule.Always;
+  } else if (captchaProviderItems.some(providerItem => providerItem.rule === CaptchaRule.Dynamic)) {
+    return CaptchaRule.Dynamic;
+  } else if (captchaProviderItems.some(providerItem => providerItem.rule === CaptchaRule.InternetOnly)) {
+    return CaptchaRule.InternetOnly;
+  }
+
+  return CaptchaRule.Never;
+}
+
+export function isInlineCaptchaEnabled(application) {
+  return application?.signinItems?.some(signinItem => signinItem.name === "Captcha" && signinItem.rule === "inline") || false;
+}
+
+export function isCaptchaEnabled(application) {
+  return getCaptchaRule(application) !== CaptchaRule.Never;
 }
 
 export function isPasswordEnabled(application) {

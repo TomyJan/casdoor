@@ -69,6 +69,7 @@ p, *, *, GET, /api/get-resources, *, *
 p, *, *, GET, /api/get-records, *, *
 p, *, *, GET, /api/get-product, *, *
 p, *, *, GET, /api/get-products, *, *
+p, *, *, POST, /api/buy-product, *, *
 p, *, *, GET, /api/get-order, *, *
 p, *, *, GET, /api/get-orders, *, *
 p, *, *, GET, /api/get-user-orders, *, *
@@ -86,12 +87,18 @@ p, *, *, GET, /api/get-captcha, *, *
 p, *, *, POST, /api/verify-captcha, *, *
 p, *, *, POST, /api/verify-code, *, *
 p, *, *, POST, /api/v1/traces, *, *
+p, *, *, POST, /api/v1/metrics, *, *
+p, *, *, POST, /api/v1/logs, *, *
 p, *, *, POST, /api/reset-email-or-phone, *, *
 p, *, *, POST, /api/upload-resource, *, *
 p, *, *, GET, /.well-known/openid-configuration, *, *
+p, *, *, GET, /.well-known/oauth-authorization-server, *, *
+p, *, *, GET, /.well-known/oauth-protected-resource, *, *
 p, *, *, GET, /.well-known/webfinger, *, *
 p, *, *, *, /.well-known/jwks, *, *
 p, *, *, GET, /.well-known/:application/openid-configuration, *, *
+p, *, *, GET, /.well-known/:application/oauth-authorization-server, *, *
+p, *, *, GET, /.well-known/:application/oauth-protected-resource, *, *
 p, *, *, GET, /.well-known/:application/webfinger, *, *
 p, *, *, *, /.well-known/:application/jwks, *, *
 p, *, *, GET, /api/get-saml-login, *, *
