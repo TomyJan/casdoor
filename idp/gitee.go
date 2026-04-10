@@ -196,13 +196,14 @@ func (idp *GiteeIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) 
 	}
 
 	uid := strconv.Itoa(gtUserInfo.Id)
-	idStr := oauthStableID(uid, "", "", gtUserInfo.Login, gtUserInfo.Email)
+	idStr := oauthStableID(uid, "", "", "", "")
 	userInfo := UserInfo{
 		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(gtUserInfo.Login, uid, "", "", gtUserInfo.Email),
-		DisplayName: displayNameFromNickname("", gtUserInfo.Name, gtUserInfo.Login, gtUserInfo.Email, idStr),
-		Email:       gtUserInfo.Email,
-		AvatarUrl:   gtUserInfo.AvatarUrl,
+		Username:    oauthUsernamePreferLogin(gtUserInfo.Login, "", "", "", ""),
+		DisplayName: displayNameFromNickname("", gtUserInfo.Name, gtUserInfo.Login, "", ""),
+
+		Email:     gtUserInfo.Email,
+		AvatarUrl: gtUserInfo.AvatarUrl,
 	}
 
 	return &userInfo, nil

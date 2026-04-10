@@ -219,11 +219,95 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// oauthStableID builds Id: userid > unionid > openid > username > email (stops at email; no weaker fallbacks).
-// When one logical slot has multiple API sources (e.g. user_id from token vs userinfo), merge them with
-// stableIDChain (or firstNonEmpty) into the appropriate argument, most trusted first.
+func rawString(v interface{}) string {
+	switch val := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(val)
+	case fmt.Stringer:
+		return strings.TrimSpace(val.String())
+	case int:
+		return fmt.Sprintf("%d", val)
+	case int8:
+		return fmt.Sprintf("%d", val)
+	case int16:
+		return fmt.Sprintf("%d", val)
+	case int32:
+		return fmt.Sprintf("%d", val)
+	case int64:
+		return fmt.Sprintf("%d", val)
+	case uint:
+		return fmt.Sprintf("%d", val)
+	case uint8:
+		return fmt.Sprintf("%d", val)
+	case uint16:
+		return fmt.Sprintf("%d", val)
+	case uint32:
+		return fmt.Sprintf("%d", val)
+	case uint64:
+		return fmt.Sprintf("%d", val)
+	case float32:
+		return strings.TrimSpace(fmt.Sprintf("%.0f", val))
+	case float64:
+		return strings.TrimSpace(fmt.Sprintf("%.0f", val))
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", val))
+	}
+}
+
+func rawFirstNonEmpty(raw map[string]interface{}, keys ...string) string {
+	if raw == nil {
+		return ""
+	}
+
+	for _, key := range keys {
+		for rawKey, value := range raw {
+			if strings.EqualFold(rawKey, key) {
+				if s := rawString(value); s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func oauthProviderUserID(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "id", "user_id", "userId", "userid", "uid", "sub", "account_id", "accountId")
+}
+
+func oauthProviderUnionID(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "unionid", "union_id", "unionId")
+}
+
+func oauthProviderOpenID(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "openid", "open_id", "openId")
+}
+
+func oauthProviderLogin(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "login", "username", "user_name", "preferred_username", "screen_name")
+}
+
+func oauthProviderNickname(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "nickname", "nick_name", "nickName")
+}
+
+func oauthProviderName(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "name", "display_name", "displayName", "full_name", "fullName", "real_name", "realName")
+}
+
+func oauthProviderEmail(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "email", "mail", "email_address", "emailAddress", "public_email", "publicEmail")
+}
+
+func oauthProviderAvatarURL(raw map[string]interface{}) string {
+	return rawFirstNonEmpty(raw, "avatar_url", "avatarUrl", "avatar", "picture", "picture_url", "pictureUrl", "profile_image_url", "profileImageUrl")
+}
+
+// oauthStableID builds Id from stable provider identifiers only: userid > unionid > openid.
 func oauthStableID(userid, unionid, openid, username, email string) string {
-	return firstNonEmpty(userid, unionid, openid, username, email)
+	return firstNonEmpty(userid, unionid, openid)
 }
 
 // stableIDChain returns the first non-empty string among peer id-like values in preference order.
@@ -231,15 +315,12 @@ func stableIDChain(candidates ...string) string {
 	return firstNonEmpty(candidates...)
 }
 
-// oauthUsernamePreferLogin uses provider login/handle first, then userid > unionid > openid > email.
+// oauthUsernamePreferLogin uses provider login/username only.
 func oauthUsernamePreferLogin(providerLogin, userid, unionid, openid, email string) string {
-	if s := strings.TrimSpace(providerLogin); s != "" {
-		return s
-	}
-	return firstNonEmpty(userid, unionid, openid, email)
+	return firstNonEmpty(providerLogin)
 }
 
-// displayNameFromNickname prefers nickname-style fields, then name, login, email, id.
+// displayNameFromNickname prefers display fields first, then login.
 func displayNameFromNickname(nickname, name, login, email, idFallback string) string {
-	return firstNonEmpty(nickname, name, login, email, idFallback)
+	return firstNonEmpty(nickname, name, login)
 }
