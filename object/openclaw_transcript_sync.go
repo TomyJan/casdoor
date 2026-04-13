@@ -26,10 +26,11 @@ var (
 )
 
 type openClawTranscriptSyncWorker struct {
-	provider   *Provider
-	stopCh     chan struct{}
-	doneCh     chan struct{}
-	fileStates map[string]openClawTranscriptFileState
+	provider      *Provider
+	stopCh        chan struct{}
+	doneCh        chan struct{}
+	fileStates    map[string]openClawTranscriptFileState
+	pathErrLogged bool
 }
 
 type openClawTranscriptFileState struct {
@@ -65,19 +66,21 @@ type openClawContentItem struct {
 }
 
 type openClawBehaviorPayload struct {
-	Summary   string `json:"summary"`
-	Kind      string `json:"kind"`
-	SessionID string `json:"sessionId"`
-	EntryID   string `json:"entryId"`
-	ParentID  string `json:"parentId,omitempty"`
-	Timestamp string `json:"timestamp"`
-	Tool      string `json:"tool,omitempty"`
-	Query     string `json:"query,omitempty"`
-	URL       string `json:"url,omitempty"`
-	Path      string `json:"path,omitempty"`
-	OK        *bool  `json:"ok,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Text      string `json:"text,omitempty"`
+	Summary       string `json:"summary"`
+	Kind          string `json:"kind"`
+	SessionID     string `json:"sessionId"`
+	EntryID       string `json:"entryId"`
+	ToolCallID    string `json:"toolCallId,omitempty"`
+	ParentID      string `json:"parentId,omitempty"`
+	Timestamp     string `json:"timestamp"`
+	Tool          string `json:"tool,omitempty"`
+	Query         string `json:"query,omitempty"`
+	URL           string `json:"url,omitempty"`
+	Path          string `json:"path,omitempty"`
+	OK            *bool  `json:"ok,omitempty"`
+	Error         string `json:"error,omitempty"`
+	AssistantText string `json:"assistantText,omitempty"`
+	Text          string `json:"text,omitempty"`
 }
 
 type openClawToolContext struct {
@@ -150,7 +153,16 @@ func (w *openClawTranscriptSyncWorker) syncOnce() {
 	}
 
 	if err := w.scanTranscriptDir(); err != nil {
-		fmt.Printf("OpenClaw transcript sync failed for provider %s: %v\n", w.provider.Name, err)
+		if os.IsNotExist(err) {
+			if !w.pathErrLogged {
+				fmt.Printf("OpenClaw transcript sync failed for provider %s: %v\n", w.provider.Name, err)
+				w.pathErrLogged = true
+			}
+		} else {
+			fmt.Printf("OpenClaw transcript sync failed for provider %s: %v\n", w.provider.Name, err)
+		}
+	} else {
+		w.pathErrLogged = false
 	}
 }
 
@@ -414,6 +426,10 @@ func buildOpenClawTranscriptEntries(provider *Provider, sessionID string, entry 
 		if text == "" {
 			return nil
 		}
+		if isHeartbeatText(text) {
+			return nil
+		}
+
 		return []*Entry{newOpenClawTranscriptEntry(provider, sessionID, "task", entry.ID, openClawBehaviorPayload{
 			Summary:   truncateText(fmt.Sprintf("task: %s", text), 100),
 			Kind:      "task",
@@ -425,7 +441,9 @@ func buildOpenClawTranscriptEntries(provider *Provider, sessionID string, entry 
 		})}
 	case "assistant":
 		items := parseContentItems(message.Content)
+		assistantText := truncateText(extractMessageText(message.Content), 2000)
 		toolEntries := []*Entry{}
+		storedAssistantText := false
 		for _, item := range items {
 			if item.Type != "toolCall" {
 				continue
@@ -433,17 +451,23 @@ func buildOpenClawTranscriptEntries(provider *Provider, sessionID string, entry 
 			context := extractOpenClawToolContext(item)
 			toolContexts[item.ID] = context
 			payload := openClawBehaviorPayload{
-				Summary:   truncateText(buildToolCallSummary(context), 100),
-				Kind:      "tool_call",
-				SessionID: sessionID,
-				EntryID:   entry.ID,
-				ParentID:  entry.ParentID,
-				Timestamp: normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
-				Tool:      context.Tool,
-				Query:     context.Query,
-				URL:       context.URL,
-				Path:      context.Path,
-				Text:      truncateText(context.Command, 500),
+				Summary:    truncateText(buildToolCallSummary(context), 100),
+				Kind:       "tool_call",
+				SessionID:  sessionID,
+				EntryID:    entry.ID,
+				ToolCallID: item.ID,
+				ParentID:   entry.ParentID,
+				Timestamp:  normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+				Tool:       context.Tool,
+				Query:      context.Query,
+				URL:        context.URL,
+				Path:       context.Path,
+				Text:       truncateText(context.Command, 500),
+			}
+			if !storedAssistantText {
+				// Avoid duplicating the same assistant text on every tool-call row.
+				payload.AssistantText = assistantText
+				storedAssistantText = true
 			}
 			identity := fmt.Sprintf("%s/%s", entry.ID, item.ID)
 			toolEntries = append(toolEntries, newOpenClawTranscriptEntry(provider, sessionID, "tool_call", identity, payload))
@@ -493,19 +517,20 @@ func buildToolResultPayload(sessionID string, entry openClawTranscriptEntry, too
 	}
 
 	return openClawBehaviorPayload{
-		Summary:   truncateText(buildToolResultSummary(toolName, toolContext, okValue, errorText, text), 100),
-		Kind:      "tool_result",
-		SessionID: sessionID,
-		EntryID:   entry.ID,
-		ParentID:  entry.ParentID,
-		Timestamp: normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
-		Tool:      toolName,
-		Query:     toolContext.Query,
-		URL:       toolContext.URL,
-		Path:      firstNonEmpty(toolContext.Path, extractWriteSuccessPath(text)),
-		OK:        &okValue,
-		Error:     truncateText(errorText, 500),
-		Text:      truncateText(text, 2000),
+		Summary:    truncateText(buildToolResultSummary(toolName, toolContext, okValue, errorText, text), 100),
+		Kind:       "tool_result",
+		SessionID:  sessionID,
+		EntryID:    entry.ID,
+		ToolCallID: message.ToolCallID,
+		ParentID:   entry.ParentID,
+		Timestamp:  normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+		Tool:       toolName,
+		Query:      toolContext.Query,
+		URL:        toolContext.URL,
+		Path:       firstNonEmpty(toolContext.Path, extractWriteSuccessPath(text)),
+		OK:         &okValue,
+		Error:      truncateText(errorText, 500),
+		Text:       truncateText(text, 2000),
 	}, true
 }
 
@@ -700,6 +725,10 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isHeartbeatText(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "Read HEARTBEAT.md")
 }
 
 func truncateText(text string, max int) string {

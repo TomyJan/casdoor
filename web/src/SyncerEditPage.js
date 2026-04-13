@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import React from "react";
+import Loading from "./common/Loading";
 import {Button, Card, Col, Input, InputNumber, Radio, Row, Select, Switch} from "antd";
 import {LinkOutlined} from "@ant-design/icons";
 import * as SyncerBackend from "./backend/SyncerBackend";
@@ -901,7 +902,7 @@ class SyncerEditPage extends React.Component {
           this.state.syncer.type === "WeCom" || this.state.syncer.type === "DingTalk" || this.state.syncer.type === "Lark" ? null : (
             <Row style={{marginTop: "20px"}} >
               <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {Setting.getLabel(this.state.syncer.type === "Azure AD" ? i18next.t("provider:Tenant ID") : this.state.syncer.type === "Google Workspace" ? i18next.t("syncer:Admin Email") : this.state.syncer.type === "Active Directory" ? i18next.t("ldap:Server") : this.state.syncer.type === "SCIM" ? i18next.t("syncer:SCIM Server URL") : this.state.syncer.type === "AWS IAM" ? i18next.t("syncer:AWS Region") : i18next.t("provider:Host"), i18next.t("provider:Host - Tooltip"))} :
+                {Setting.getLabel(this.state.syncer.type === "Azure AD" ? i18next.t("provider:Tenant ID") : this.state.syncer.type === "Google Workspace" ? i18next.t("syncer:Admin Email") : this.state.syncer.type === "Active Directory" ? i18next.t("ldap:Server") : this.state.syncer.type === "SCIM" ? i18next.t("syncer:SCIM Server URL") : this.state.syncer.type === "AWS IAM" ? i18next.t("syncer:AWS Region") : i18next.t("general:Host"), i18next.t("provider:Host - Tooltip"))} :
               </Col>
               <Col span={22} >
                 <Input prefix={<LinkOutlined />} value={this.state.syncer.host} onChange={e => {
@@ -915,7 +916,7 @@ class SyncerEditPage extends React.Component {
           this.state.syncer.type === "WeCom" || this.state.syncer.type === "Azure AD" || this.state.syncer.type === "Google Workspace" || this.state.syncer.type === "DingTalk" || this.state.syncer.type === "Lark" || this.state.syncer.type === "Okta" || this.state.syncer.type === "SCIM" || this.state.syncer.type === "AWS IAM" ? null : (
             <Row style={{marginTop: "20px"}} >
               <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {Setting.getLabel(this.state.syncer.type === "Active Directory" ? i18next.t("provider:LDAP port") : i18next.t("provider:Port"), i18next.t("provider:Port - Tooltip"))} :
+                {Setting.getLabel(this.state.syncer.type === "Active Directory" ? i18next.t("provider:LDAP port") : i18next.t("general:Port"), i18next.t("provider:Port - Tooltip"))} :
               </Col>
               <Col span={22} >
                 <InputNumber value={this.state.syncer.port} onChange={value => {
@@ -1240,7 +1241,7 @@ class SyncerEditPage extends React.Component {
     return (
       <div>
         {
-          this.state.syncer !== null ? this.renderSyncer() : null
+          this.state.syncer !== null ? this.renderSyncer() : <Loading type="page" tip={i18next.t("login:Loading")} />
         }
         <div style={{marginTop: "20px", marginLeft: "40px"}}>
           <Button size="large" onClick={() => this.submitSyncerEdit(false)}>{i18next.t("general:Save")}</Button>

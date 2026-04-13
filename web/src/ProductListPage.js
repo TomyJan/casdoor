@@ -145,7 +145,7 @@ class ProductListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("user:Tag"),
+        title: i18next.t("general:Tag"),
         dataIndex: "tag",
         key: "tag",
         width: "160px",
@@ -288,7 +288,7 @@ class ProductListPage extends BaseListPage {
               </div>
             );
           }}
-          loading={this.state.loading}
+          loading={this.getTableLoading()}
           onChange={this.handleTableChange}
         />
       </div>

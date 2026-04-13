@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import React from "react";
+import Loading from "./common/Loading";
 import {Button, Card, Col, Input, InputNumber, Row, Select} from "antd";
 import * as CertBackend from "./backend/CertBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -260,7 +261,7 @@ class CertEditPage extends React.Component {
             <React.Fragment>
               <Row style={{marginTop: "20px"}} >
                 <Col style={{marginTop: "5px"}} span={2}>
-                  {i18next.t("cert:Expire time")}:
+                  {i18next.t("general:Expire time")}:
                 </Col>
                 <Col span={22} >
                   <Input disabled={true} value={Setting.getFormattedDate(this.state.cert.expireTime)} onChange={e => {
@@ -280,7 +281,7 @@ class CertEditPage extends React.Component {
               </Row>
               <Row style={{marginTop: "20px"}} >
                 <Col style={{marginTop: "5px"}} span={2}>
-                  {i18next.t("cert:Provider")}:
+                  {i18next.t("general:Provider")}:
                 </Col>
                 <Col span={22} >
                   <Select virtual={false} style={{width: "100%"}} value={this.state.cert.provider} onChange={(value => {this.updateCertField("provider", value);})}>
@@ -305,7 +306,7 @@ class CertEditPage extends React.Component {
               </Row>
               <Row style={{marginTop: "20px"}} >
                 <Col style={{marginTop: "5px"}} span={2}>
-                  {i18next.t("cert:Access key")}:
+                  {i18next.t("general:Access key")}:
                 </Col>
                 <Col span={22} >
                   <Input value={this.state.cert.accessKey} onChange={e => {
@@ -421,7 +422,7 @@ class CertEditPage extends React.Component {
     return (
       <div>
         {
-          this.state.cert !== null ? this.renderCert() : null
+          this.state.cert !== null ? this.renderCert() : <Loading type="page" tip={i18next.t("login:Loading")} />
         }
         <div style={{marginTop: "20px", marginLeft: "40px"}}>
           <Button size="large" onClick={() => this.submitCertEdit(false)}>{i18next.t("general:Save")}</Button>

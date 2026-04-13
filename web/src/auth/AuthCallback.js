@@ -13,8 +13,8 @@
 // limitations under the License.
 
 import React from "react";
-import {Spin} from "antd";
 import {withRouter} from "react-router-dom";
+import Loading from "../common/Loading";
 import * as AuthBackend from "./AuthBackend";
 import * as Util from "./Util";
 import * as Provider from "./Provider";
@@ -182,7 +182,7 @@ class AuthCallback extends React.Component {
 
     const innerParams = this.getInnerParams();
     const method = innerParams.get("method");
-    if (method === "signup") {
+    if (method === "signup" || method === "signin") {
       const realRedirectUri = innerParams.get("redirect_uri");
       // Casdoor's own login page, so "code" is not necessary
       if (realRedirectUri === null) {
@@ -352,7 +352,7 @@ class AuthCallback extends React.Component {
       <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
         {
           (this.state.msg === null) ? (
-            <Spin size="large" tip={i18next.t("login:Signing in...")} style={{paddingTop: "10%"}} />
+            <Loading type="page" tip={i18next.t("login:Signing in...")} />
           ) : (
             Util.renderMessageLarge(this, this.state.msg)
           )

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import React from "react";
+import Loading from "./common/Loading";
 import {Button, Card, Col, Input, InputNumber, Row, Select, Switch} from "antd";
 import * as Setting from "./Setting";
 import * as RuleBackend from "./backend/RuleBackend";
@@ -116,7 +117,7 @@ class RuleEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}}>
           <Col span={2} style={{marginTop: "5px"}}>
-            {i18next.t("rule:Type")}:
+            {i18next.t("general:Type")}:
           </Col>
           <Col span={22}>
             <Select virtual={false} value={this.state.rule.type} style={{width: "100%"}} onChange={value => {
@@ -207,7 +208,7 @@ class RuleEditPage extends React.Component {
                 }}>
                   {
                     [
-                      {value: "Allow", text: i18next.t("rule:Allow")},
+                      {value: "Allow", text: i18next.t("permission:Allow")},
                       {value: "Block", text: i18next.t("rule:Block")},
                     ].map((item, index) => <Option key={index} value={item.value}>{item.text}</Option>)
                   }
@@ -268,7 +269,7 @@ class RuleEditPage extends React.Component {
           </Col>
           <Col span={22}>
             {
-              this.state.rule !== null ? this.renderRule() : null
+              this.state.rule !== null ? this.renderRule() : <Loading type="page" tip={i18next.t("login:Loading")} />
             }
           </Col>
           <Col span={1}>

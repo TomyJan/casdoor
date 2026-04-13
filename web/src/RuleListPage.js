@@ -143,7 +143,7 @@ class RuleListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("rule:Type"),
+        title: i18next.t("general:Type"),
         dataIndex: "type",
         key: "type",
         width: "100px",
@@ -218,7 +218,7 @@ class RuleListPage extends BaseListPage {
         columns={columns}
         rowKey="name"
         pagination={this.state.pagination}
-        loading={this.state.loading}
+        loading={this.getTableLoading()}
         onChange={this.handleTableChange}
         size="middle"
         bordered
