@@ -47,7 +47,7 @@ jobs:
       - run: yarn install && CI=false yarn run build
         working-directory: ./web
       - name: Upload build artifacts
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build-${{ github.run_id }}
@@ -161,7 +161,7 @@ jobs:
     permissions:
       contents: write
       issues: write
-    if: github.repository == 'casdoor/casdoor' && github.event_name == 'push'
+    if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push'
     needs: [frontend, backend, linter, e2e]
     outputs:
       new-release-published: ${{ steps.semantic.outputs.new_release_published }}
@@ -182,7 +182,7 @@ jobs:
     permissions:
       contents: write
       issues: write
-    if: github.repository == 'casdoor/casdoor' && github.event_name == 'push' && needs.tag-release.outputs.new-release-published == 'true'
+    if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push' && needs.tag-release.outputs.new-release-published == 'true'
     needs: [tag-release]
     steps:
       - name: Checkout
@@ -232,7 +232,7 @@ jobs:
     permissions:
       contents: write
       issues: write
-    if: github.repository == 'casdoor/casdoor' && github.event_name == 'push' && needs.tag-release.outputs.new-release-published == 'true'
+    if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push' && needs.tag-release.outputs.new-release-published == 'true'
     needs: [tag-release]
     steps:
       - name: Checkout
@@ -274,57 +274,27 @@ jobs:
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v1
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Push to Docker Hub
         uses: docker/build-push-action@v3
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
         with:
           context: .
           target: STANDARD
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: casbin/casdoor:${{ needs.tag-release.outputs.new-release-version }},casbin/casdoor:latest
+          tags: tomyjan/casdoor:${{ needs.tag-release.outputs.new-release-version }},tomyjan/casdoor:latest
 
       - name: Push All In One Version to Docker Hub
         uses: docker/build-push-action@v3
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push' && steps.should_push.outputs.push=='true'
         with:
           context: .
           target: ALLINONE
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: casbin/casdoor-all-in-one:${{ needs.tag-release.outputs.new-release-version }},casbin/casdoor-all-in-one:latest
-
-      - uses: actions/checkout@v3
-        if: steps.should_push.outputs.push=='true'
-        with:
-          repository: casdoor/casdoor-helm
-          ref: "master"
-          token: ${{ secrets.GH_BOT_TOKEN }}
-
-      - name: Update Helm Chart
-        if: steps.should_push.outputs.push=='true'
-        run: |
-          # Set the appVersion and version of the chart to the current tag
-          sed -i "s/appVersion: .*/appVersion: ${{ needs.tag-release.outputs.new-release-version }}/g" ./charts/casdoor/Chart.yaml
-          sed -i "s/version: .*/version: ${{ needs.tag-release.outputs.new-release-version }}/g" ./charts/casdoor/Chart.yaml
-
-          REGISTRY=oci://registry-1.docker.io/casbin
-          cd charts/casdoor
-          helm package .
-          PKG_NAME=$(ls *.tgz)
-          helm repo index . --url $REGISTRY --merge index.yaml
-          helm push $PKG_NAME $REGISTRY
-          rm $PKG_NAME
-
-          # Commit and push the changes back to the repository
-          git config --global user.name "casbin-bot"
-          git config --global user.email "bot@casbin.org"
-          git add Chart.yaml index.yaml
-          git commit -m "chore(helm): bump helm charts appVersion to ${{ needs.tag-release.outputs.new-release-version }}"
-          git tag ${{ needs.tag-release.outputs.new-release-version }}
-          git push origin HEAD:master --follow-tags
+          tags: tomyjan/casdoor-all-in-one:${{ needs.tag-release.outputs.new-release-version }},tomyjan/casdoor-all-in-one:latest
