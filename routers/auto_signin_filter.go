@@ -70,6 +70,25 @@ func AutoSigninFilter(ctx *context.Context) {
 			return
 		}
 
+		// Validate DPoP proof for DPoP-bound tokens (RFC 9449).
+		if token.TokenType == "DPoP" {
+			dpopProof := ctx.Request.Header.Get("DPoP")
+			if dpopProof == "" {
+				responseError(ctx, "DPoP proof header required for DPoP-bound access token")
+				return
+			}
+			htu := object.GetDPoPHtu(ctx.Request.Host, ctx.Request.URL.Path)
+			jkt, dpopErr := object.ValidateDPoPProof(dpopProof, ctx.Request.Method, htu, accessToken)
+			if dpopErr != nil {
+				responseError(ctx, fmt.Sprintf("DPoP proof validation failed: %s", dpopErr.Error()))
+				return
+			}
+			if jkt != token.DPoPJkt {
+				responseError(ctx, "DPoP proof key binding mismatch")
+				return
+			}
+		}
+
 		userId := util.GetId(token.Organization, token.User)
 		application, err := object.GetApplicationByUserId(fmt.Sprintf("app/%s", token.Application))
 		if err != nil {
@@ -88,6 +107,17 @@ func AutoSigninFilter(ctx *context.Context) {
 
 	// "/page?clientId=123&clientSecret=456"
 	userId, err := getUsernameByClientIdSecret(ctx)
+	if err != nil {
+		responseError(ctx, err.Error())
+		return
+	}
+	if userId != "" {
+		setSessionUser(ctx, userId)
+		return
+	}
+
+	// "/page?accessKey=123&accessSecret=456"
+	userId, err = getUsernameByAccessKey(ctx)
 	if err != nil {
 		responseError(ctx, err.Error())
 		return

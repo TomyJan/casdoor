@@ -119,6 +119,7 @@ p, *, *, GET, /api/get-transactions, *, *
 p, *, *, GET, /api/get-transaction, *, *
 p, *, *, GET, /api/get-provider, *, *
 p, *, *, GET, /api/get-organization-names, *, *
+p, *, *, GET, /api/get-organizations, *, *
 p, *, *, GET, /api/get-all-objects, *, *
 p, *, *, GET, /api/get-all-actions, *, *
 p, *, *, GET, /api/get-all-roles, *, *
@@ -180,6 +181,13 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 		}
 
 		if user.IsAdmin && subOwner == objOwner {
+			return true
+		}
+
+		// Organization id is owner/name (e.g. admin/casbin) where name is the org name.
+		// User.Owner is the organization name, not the organization's Owner field, so
+		// subOwner == objOwner does not hold for org admins. Allow org admins to read their org.
+		if method == "GET" && urlPath == "/api/get-organization" && user.IsAdmin && user.Owner == objName {
 			return true
 		}
 	}

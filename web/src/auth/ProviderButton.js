@@ -16,6 +16,7 @@ import React from "react";
 import i18next from "i18next";
 import * as Provider from "./Provider";
 import {getProviderLogoURL} from "../Setting";
+import "./ProviderButton.css";
 import {GithubLoginButton, GoogleLoginButton} from "react-social-login-buttons";
 import QqLoginButton from "./QqLoginButton";
 import FacebookLoginButton from "./FacebookLoginButton";
@@ -143,33 +144,33 @@ export function goToWeb3Url(application, provider, method) {
   }
 }
 
-export function renderProviderLogo(provider, application, width, margin, size, location) {
+export function renderProviderLogo(provider, application, width, margin, size, location, method = "signup") {
   if (size === "small") {
     if (provider.category === "OAuth") {
       if (provider.type === "WeChat" && provider.clientId2 !== "" && provider.clientSecret2 !== "" && provider.disableSsl === true && !navigator.userAgent.includes("MicroMessenger")) {
         return (
-          <a key={provider.displayName} >
+          <a key={provider.displayName} className="provider-link">
             <img width={width} height={width} src={getProviderLogoURL(provider)} alt={provider.displayName} className="provider-img" style={{margin: margin}} onClick={() => {
-              WechatOfficialAccountModal(application, provider, "signup");
+              WechatOfficialAccountModal(application, provider, method);
             }} />
           </a>
         );
       } else {
         return (
-          <a key={provider.displayName} href={Provider.getAuthUrl(application, provider, "signup")}>
+          <a key={provider.displayName} href={Provider.getAuthUrl(application, provider, method)} className="provider-link">
             <img width={width} height={width} src={getProviderLogoURL(provider)} alt={provider.displayName} className="provider-img" style={{margin: margin}} />
           </a>
         );
       }
     } else if (provider.category === "SAML") {
       return (
-        <a key={provider.displayName} onClick={() => goToSamlUrl(provider, location)}>
+        <a key={provider.displayName} onClick={() => goToSamlUrl(provider, location)} className="provider-link">
           <img width={width} height={width} src={getProviderLogoURL(provider)} alt={provider.displayName} className="provider-img" style={{margin: margin}} />
         </a>
       );
     } else if (provider.category === "Web3") {
       return (
-        <a key={provider.displayName} onClick={() => goToWeb3Url(application, provider, "signup")}>
+        <a key={provider.displayName} onClick={() => goToWeb3Url(application, provider, method)} className="provider-link">
           <img width={width} height={width} src={getProviderLogoURL(provider)} alt={provider.displayName} className="provider-img" style={{margin: margin}} />
         </a>
       );
@@ -183,7 +184,7 @@ export function renderProviderLogo(provider, application, width, margin, size, l
     const customSpanStyle = {textAlign: "center", width: "100%", fontSize: "19px"};
     if (provider.category === "OAuth") {
       return (
-        <a key={provider.displayName} href={Provider.getAuthUrl(application, provider, "signup")} style={customAStyle}>
+        <a key={provider.displayName} href={Provider.getAuthUrl(application, provider, method)} style={customAStyle}>
           <div style={customButtonStyle}>
             <img width={26} src={getProviderLogoURL(provider)} alt={provider.displayName} className="provider-img" style={customImgStyle} />
             <span style={customSpanStyle}>{text}</span>
@@ -215,7 +216,7 @@ export function renderProviderLogo(provider, application, width, margin, size, l
     } else if (provider.category === "Web3") {
       return (
         <div key={provider.displayName} className="provider-big-img">
-          <a onClick={() => goToWeb3Url(application, provider, "signup")}>
+          <a onClick={() => goToWeb3Url(application, provider, method)}>
             {
               getSigninButton(provider)
             }
@@ -225,7 +226,7 @@ export function renderProviderLogo(provider, application, width, margin, size, l
     } else {
       return (
         <div key={provider.displayName} className="provider-big-img">
-          <a href={Provider.getAuthUrl(application, provider, "signup")}>
+          <a href={Provider.getAuthUrl(application, provider, method)}>
             {
               getSigninButton(provider)
             }

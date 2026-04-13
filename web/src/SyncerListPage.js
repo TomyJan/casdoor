@@ -162,11 +162,11 @@ class SyncerListPage extends BaseListPage {
         title: i18next.t("syncer:Database type"),
         dataIndex: "databaseType",
         key: "databaseType",
-        width: "130px",
+        width: "140px",
         sorter: (a, b) => a.databaseType.localeCompare(b.databaseType),
       },
       {
-        title: i18next.t("provider:Host"),
+        title: i18next.t("general:Host"),
         dataIndex: "host",
         key: "host",
         width: "120px",
@@ -174,7 +174,7 @@ class SyncerListPage extends BaseListPage {
         ...this.getColumnSearchProps("host"),
       },
       {
-        title: i18next.t("provider:Port"),
+        title: i18next.t("general:Port"),
         dataIndex: "port",
         key: "port",
         width: "100px",
@@ -215,7 +215,7 @@ class SyncerListPage extends BaseListPage {
         title: i18next.t("syncer:Sync interval"),
         dataIndex: "syncInterval",
         key: "syncInterval",
-        width: "140px",
+        width: "150px",
         sorter: true,
         ...this.getColumnSearchProps("syncInterval"),
       },
@@ -269,7 +269,7 @@ class SyncerListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addSyncer.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.state.loading}
+          loading={this.getTableLoading()}
           onChange={this.handleTableChange}
         />
       </div>

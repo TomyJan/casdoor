@@ -396,7 +396,7 @@ class UserListPage extends BaseListPage {
         title: i18next.t("application:Real name"),
         dataIndex: "realName",
         key: "realName",
-        width: "120px",
+        width: "130px",
         sorter: true,
         ...this.getColumnSearchProps("realName"),
       },
@@ -432,7 +432,7 @@ class UserListPage extends BaseListPage {
         ...this.getColumnSearchProps("type"),
       },
       {
-        title: i18next.t("user:Tag"),
+        title: i18next.t("general:Tag"),
         dataIndex: "tag",
         key: "tag",
         width: "110px",
@@ -464,7 +464,7 @@ class UserListPage extends BaseListPage {
         title: i18next.t("user:Register source"),
         dataIndex: "registerSource",
         key: "registerSource",
-        width: "150px",
+        width: "160px",
         sorter: true,
         ...this.getColumnSearchProps("registerSource"),
       },
@@ -482,7 +482,7 @@ class UserListPage extends BaseListPage {
         title: i18next.t("organization:Balance credit"),
         dataIndex: "balanceCredit",
         key: "balanceCredit",
-        width: "120px",
+        width: "130px",
         sorter: true,
         render: (text, record, index) => {
           return text ?? 0;
@@ -492,7 +492,7 @@ class UserListPage extends BaseListPage {
         title: i18next.t("organization:Balance currency"),
         dataIndex: "balanceCurrency",
         key: "balanceCurrency",
-        width: "140px",
+        width: "160px",
         sorter: true,
         render: (text, record, index) => {
           return text || "USD";
@@ -514,7 +514,7 @@ class UserListPage extends BaseListPage {
         title: i18next.t("user:Is forbidden"),
         dataIndex: "isForbidden",
         key: "isForbidden",
-        width: "110px",
+        width: "120px",
         sorter: true,
         render: (text, record, index) => {
           return (
@@ -545,9 +545,9 @@ class UserListPage extends BaseListPage {
           const disabled = (record.owner === this.props.account.owner && record.name === this.props.account.name) || (record.owner === "built-in" && record.name === "admin");
           return (
             <Space>
-              <Button size={isTreePage ? "small" : "middle"} type="primary" onClick={() => {
+              <Button size={isTreePage ? "small" : "middle"} onClick={() => {
                 this.impersonateUser(`${record.owner}/${record.name}`);
-              }}>{i18next.t("general:Impersonation")}
+              }}>{i18next.t("general:Impersonate")}
               </Button>
               <Button size={isTreePage ? "small" : "middle"} type="primary" onClick={() => {
                 sessionStorage.setItem("userListUrl", window.location.pathname);
@@ -595,7 +595,7 @@ class UserListPage extends BaseListPage {
               }
             </div>
           )}
-          loading={this.state.loading}
+          loading={this.getTableLoading()}
           onChange={this.handleTableChange}
         />
       </div>

@@ -145,7 +145,7 @@ class KeyListPage extends BaseListPage {
         ],
       },
       {
-        title: i18next.t("key:Access key"),
+        title: i18next.t("general:Access key"),
         dataIndex: "accessKey",
         key: "accessKey",
         width: "300px",
@@ -207,7 +207,7 @@ class KeyListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addKey.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.state.loading}
+          loading={this.getTableLoading()}
           onChange={this.handleTableChange}
         />
       </div>
