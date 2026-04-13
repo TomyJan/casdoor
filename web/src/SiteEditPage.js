@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import React from "react";
-import Loading from "./common/Loading";
 import {Button, Card, Col, Input, InputNumber, Row, Select, Switch} from "antd";
 import {LinkOutlined} from "@ant-design/icons";
 import * as ProviderBackend from "./backend/ProviderBackend";
@@ -208,7 +207,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("provider:Domain")}:
+            {i18next.t("site:Domain")}:
           </Col>
           <Col span={22} >
             <Input value={this.state.site.domain} onChange={e => {
@@ -218,7 +217,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("application:Other domains")}:
+            {i18next.t("site:Other domains")}:
           </Col>
           <Col span={22} >
             <Select virtual={false} mode="tags" style={{width: "100%"}} value={this.state.site.otherDomains} onChange={(value => {this.updateSiteField("otherDomains", value);})}>
@@ -250,7 +249,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("general:Rules")}:
+            {i18next.t("site:Rules")}:
           </Col>
           <Col span={22} >
             <RuleTable
@@ -330,7 +329,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("general:Host")}:
+            {i18next.t("site:Host")}:
           </Col>
           <Col span={22} >
             <Input prefix={<LinkOutlined />} value={this.state.site.host} onChange={e => {
@@ -340,7 +339,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("general:Port")}:
+            {i18next.t("site:Port")}:
           </Col>
           <Col span={22} >
             <InputNumber min={0} max={65535} value={this.state.site.port} onChange={value => {
@@ -389,7 +388,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("application:SSL cert")}:
+            {i18next.t("site:SSL cert")}:
           </Col>
           <Col span={22} >
             <Select disabled={true} virtual={false} style={{width: "100%"}} showSearch value={this.state.site.sslCert} onChange={(value => {
@@ -417,7 +416,7 @@ class SiteEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={2}>
-            {i18next.t("general:Status")}:
+            {i18next.t("site:Status")}:
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.site.status} onChange={(value => {this.updateSiteField("status", value);})}>
@@ -464,7 +463,7 @@ class SiteEditPage extends React.Component {
           </Col>
           <Col span={22}>
             {
-              this.state.site !== null ? this.renderSite() : <Loading type="page" tip={i18next.t("login:Loading")} />
+              this.state.site !== null ? this.renderSite() : null
             }
           </Col>
           <Col span={1}>

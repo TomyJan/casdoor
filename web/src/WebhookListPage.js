@@ -148,7 +148,7 @@ class WebhookListPage extends BaseListPage {
         title: i18next.t("webhook:Content type"),
         dataIndex: "contentType",
         key: "contentType",
-        width: "150px",
+        width: "140px",
         sorter: true,
         filterMultiple: false,
         filters: [
@@ -171,7 +171,7 @@ class WebhookListPage extends BaseListPage {
         title: i18next.t("webhook:Is user extended"),
         dataIndex: "isUserExtended",
         key: "isUserExtended",
-        width: "150px",
+        width: "140px",
         sorter: true,
         render: (text, record, index) => {
           return (
@@ -241,7 +241,7 @@ class WebhookListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addWebhook.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

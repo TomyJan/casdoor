@@ -15,8 +15,13 @@
 package object
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -63,24 +68,8 @@ type OpenClawSessionGraphStats struct {
 }
 
 type openClawSessionGraphBuilder struct {
-	graph    *OpenClawSessionGraph
-	nodes    map[string]*OpenClawSessionGraphNode
-	edges    []*OpenClawSessionGraphEdge
-	edgeKeys map[string]struct{}
-}
-
-type openClawSessionGraphRecord struct {
-	Entry   *Entry
-	Payload openClawBehaviorPayload
-}
-
-type openClawAssistantStepGroup struct {
-	ParentID          string
-	Timestamp         string
-	ToolNames         []string
-	Text              string
-	ToolCallNodeIDs   []string
-	ToolResultNodeIDs []string
+	graph *OpenClawSessionGraph
+	nodes map[string]*OpenClawSessionGraphNode
 }
 
 func GetOpenClawSessionGraph(id string) (*OpenClawSessionGraph, error) {
@@ -91,15 +80,12 @@ func GetOpenClawSessionGraph(id string) (*OpenClawSessionGraph, error) {
 	if entry == nil {
 		return nil, nil
 	}
-	if strings.TrimSpace(entry.Type) != "session" {
-		return nil, fmt.Errorf("entry %s is not an OpenClaw session entry", id)
-	}
 
 	provider, err := GetProvider(util.GetId(entry.Owner, entry.Provider))
 	if err != nil {
 		return nil, err
 	}
-	if provider != nil && !isOpenClawLogProvider(provider) {
+	if !isOpenClawLogProvider(provider) || strings.TrimSpace(entry.Type) != "session" {
 		return nil, fmt.Errorf("entry %s is not an OpenClaw session entry", id)
 	}
 
@@ -108,12 +94,14 @@ func GetOpenClawSessionGraph(id string) (*OpenClawSessionGraph, error) {
 		return nil, fmt.Errorf("failed to parse anchor entry %s: %w", entry.Name, err)
 	}
 
-	records, err := collectOpenClawSessionGraphRecords(entry, anchorPayload)
+	rawGraph, err := tryBuildOpenClawSessionGraphFromRaw(provider, anchorPayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load OpenClaw session entries from database: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to build OpenClaw session graph from raw transcript: %w", err)
 	}
-
-	return buildOpenClawSessionGraphFromEntries(anchorPayload, entry.Name, records), nil
+	return rawGraph, nil
 }
 
 func parseOpenClawSessionGraphPayload(entry *Entry) (openClawBehaviorPayload, error) {
@@ -133,7 +121,6 @@ func parseOpenClawSessionGraphPayload(entry *Entry) (openClawBehaviorPayload, er
 
 	payload.SessionID = strings.TrimSpace(payload.SessionID)
 	payload.EntryID = strings.TrimSpace(payload.EntryID)
-	payload.ToolCallID = strings.TrimSpace(payload.ToolCallID)
 	payload.ParentID = strings.TrimSpace(payload.ParentID)
 	payload.Kind = strings.TrimSpace(payload.Kind)
 	payload.Summary = strings.TrimSpace(payload.Summary)
@@ -142,7 +129,6 @@ func parseOpenClawSessionGraphPayload(entry *Entry) (openClawBehaviorPayload, er
 	payload.URL = strings.TrimSpace(payload.URL)
 	payload.Path = strings.TrimSpace(payload.Path)
 	payload.Error = strings.TrimSpace(payload.Error)
-	payload.AssistantText = strings.TrimSpace(payload.AssistantText)
 	payload.Text = strings.TrimSpace(payload.Text)
 	payload.Timestamp = strings.TrimSpace(firstNonEmpty(payload.Timestamp, entry.CreatedTime))
 
@@ -159,447 +145,346 @@ func parseOpenClawSessionGraphPayload(entry *Entry) (openClawBehaviorPayload, er
 	return payload, nil
 }
 
-func collectOpenClawSessionGraphRecords(anchorEntry *Entry, anchorPayload openClawBehaviorPayload) ([]openClawSessionGraphRecord, error) {
-	if anchorEntry == nil {
-		return nil, fmt.Errorf("anchor entry is nil")
-	}
-
-	entries := []*Entry{}
-	query := ormer.Engine.Where("owner = ? and type = ?", anchorEntry.Owner, "session")
-	if providerName := strings.TrimSpace(anchorEntry.Provider); providerName != "" {
-		query = query.And("provider = ?", providerName)
-	}
-
-	if err := query.
-		Asc("created_time").
-		Asc("name").
-		Find(&entries); err != nil {
+func tryBuildOpenClawSessionGraphFromRaw(provider *Provider, anchorPayload openClawBehaviorPayload) (*OpenClawSessionGraph, error) {
+	transcriptPath, err := resolveOpenClawSessionTranscriptPath(provider, anchorPayload.SessionID)
+	if err != nil {
 		return nil, err
 	}
 
-	return filterOpenClawSessionGraphRecords(anchorEntry, anchorPayload, entries), nil
+	entries, err := loadOpenClawSessionTranscriptEntries(transcriptPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildOpenClawSessionGraphFromRaw(anchorPayload, entries), nil
 }
 
-func filterOpenClawSessionGraphRecords(anchorEntry *Entry, anchorPayload openClawBehaviorPayload, entries []*Entry) []openClawSessionGraphRecord {
-	targetSessionID := strings.TrimSpace(anchorPayload.SessionID)
-	records := make([]openClawSessionGraphRecord, 0, len(entries)+1)
-	hasAnchor := false
-	for _, candidate := range entries {
-		if candidate == nil {
+func resolveOpenClawSessionTranscriptPath(provider *Provider, sessionID string) (string, error) {
+	transcriptDir, err := resolveOpenClawTranscriptDir(provider)
+	if err != nil {
+		return "", err
+	}
+
+	sessionID, err = validateOpenClawSessionID(sessionID)
+	if err != nil {
+		return "", err
+	}
+
+	path, err := joinPathWithinDir(transcriptDir, fmt.Sprintf("%s.jsonl", sessionID))
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+
+		fallbackPath, fallbackErr := resolveLatestOpenClawResetTranscriptPath(transcriptDir, sessionID)
+		if fallbackErr == nil {
+			return fallbackPath, nil
+		}
+		if os.IsNotExist(fallbackErr) {
+			return "", fmt.Errorf("session file %s does not exist: %w", path, os.ErrNotExist)
+		}
+		return "", fallbackErr
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("session path %s is a directory", path)
+	}
+	return path, nil
+}
+
+func validateOpenClawSessionID(sessionID string) (string, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", fmt.Errorf("sessionId is empty")
+	}
+	if filepath.IsAbs(sessionID) {
+		return "", fmt.Errorf("invalid sessionId: absolute path is not allowed")
+	}
+	if sessionID == "." || sessionID == ".." {
+		return "", fmt.Errorf("invalid sessionId: relative path segments are not allowed")
+	}
+	if strings.Contains(sessionID, "/") || strings.Contains(sessionID, "\\") {
+		return "", fmt.Errorf("invalid sessionId: path separators are not allowed")
+	}
+	if filepath.Clean(sessionID) != sessionID {
+		return "", fmt.Errorf("invalid sessionId: normalized value mismatch")
+	}
+	if filepath.Base(sessionID) != sessionID {
+		return "", fmt.Errorf("invalid sessionId: basename mismatch")
+	}
+	return sessionID, nil
+}
+
+func joinPathWithinDir(baseDir, fileName string) (string, error) {
+	baseDir = filepath.Clean(baseDir)
+	candidate := filepath.Clean(filepath.Join(baseDir, fileName))
+
+	relativePath, err := filepath.Rel(baseDir, candidate)
+	if err != nil {
+		return "", err
+	}
+	if relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) || filepath.IsAbs(relativePath) {
+		return "", fmt.Errorf("resolved path escaped transcript directory")
+	}
+
+	return candidate, nil
+}
+
+func resolveLatestOpenClawResetTranscriptPath(transcriptDir, sessionID string) (string, error) {
+	entries, err := os.ReadDir(transcriptDir)
+	if err != nil {
+		return "", err
+	}
+
+	prefix := fmt.Sprintf("%s.jsonl.reset.", strings.TrimSpace(sessionID))
+	type transcriptCandidate struct {
+		name      string
+		path      string
+		modTimeNs int64
+	}
+
+	candidates := []transcriptCandidate{}
+	for _, entry := range entries {
+		if entry == nil || entry.IsDir() {
 			continue
 		}
 
-		payload, err := parseOpenClawSessionGraphPayload(candidate)
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
+		candidate := transcriptCandidate{
+			name: name,
+		}
+		candidate.path, err = joinPathWithinDir(transcriptDir, name)
 		if err != nil {
 			continue
 		}
-		if payload.SessionID != targetSessionID {
+		if info, infoErr := entry.Info(); infoErr == nil && info != nil {
+			candidate.modTimeNs = info.ModTime().UnixNano()
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	if len(candidates) == 0 {
+		return "", os.ErrNotExist
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].name != candidates[j].name {
+			return candidates[i].name > candidates[j].name
+		}
+		return candidates[i].modTimeNs > candidates[j].modTimeNs
+	})
+
+	return candidates[0].path, nil
+}
+
+func loadOpenClawSessionTranscriptEntries(path string) ([]openClawTranscriptEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	entries := []openClawTranscriptEntry{}
+	reader := bufio.NewReader(file)
+	for {
+		lineBytes, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return nil, readErr
+		}
+
+		line := strings.TrimSpace(string(lineBytes))
+		if line != "" {
+			var entry openClawTranscriptEntry
+			if err := json.Unmarshal([]byte(line), &entry); err != nil {
+				continue
+			}
+			entries = append(entries, entry)
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+	}
+
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("session file %s did not contain any valid transcript entries", path)
+	}
+
+	return entries, nil
+}
+
+func buildOpenClawSessionGraphFromRaw(anchorPayload openClawBehaviorPayload, transcriptEntries []openClawTranscriptEntry) *OpenClawSessionGraph {
+	builder := newOpenClawSessionGraphBuilder()
+	toolContexts := map[string]openClawToolContext{}
+	rawToolCallsByAssistant := map[string][]string{}
+
+	for _, entry := range transcriptEntries {
+		if entry.Type != "message" || entry.Message == nil {
 			continue
 		}
 
-		records = append(records, openClawSessionGraphRecord{
-			Entry:   candidate,
-			Payload: payload,
-		})
-		if candidate.Owner == anchorEntry.Owner && candidate.Name == anchorEntry.Name {
-			hasAnchor = true
-		}
-	}
-
-	if !hasAnchor && anchorEntry != nil {
-		records = append(records, openClawSessionGraphRecord{
-			Entry:   anchorEntry,
-			Payload: anchorPayload,
-		})
-	}
-
-	sort.SliceStable(records, func(i, j int) bool {
-		leftPayload := records[i].Payload
-		rightPayload := records[j].Payload
-		leftTimestamp := strings.TrimSpace(firstNonEmpty(leftPayload.Timestamp, records[i].Entry.CreatedTime))
-		rightTimestamp := strings.TrimSpace(firstNonEmpty(rightPayload.Timestamp, records[j].Entry.CreatedTime))
-		if timestampOrder := compareOpenClawGraphTimestamps(leftTimestamp, rightTimestamp); timestampOrder != 0 {
-			return timestampOrder < 0
-		}
-		return records[i].Entry.Name < records[j].Entry.Name
-	})
-
-	return records
-}
-
-func buildOpenClawSessionGraphFromEntries(anchorPayload openClawBehaviorPayload, anchorEntryName string, records []openClawSessionGraphRecord) *OpenClawSessionGraph {
-	builder := newOpenClawSessionGraphBuilder()
-	nodeIDsByEntryName := map[string][]string{}
-	assistantGroups := map[string]*openClawAssistantStepGroup{}
-	toolCallNodesByAssistant := map[string][]*OpenClawSessionGraphNode{}
-	toolCallNodeIDByToolCallID := map[string]string{}
-	toolCallNodeIDToAssistantID := map[string]string{}
-	allToolCallNodes := []*OpenClawSessionGraphNode{}
-	toolResultRecords := []openClawSessionGraphRecord{}
-
-	for _, record := range records {
-		payload := record.Payload
-		switch payload.Kind {
-		case "task":
+		message := entry.Message
+		switch message.Role {
+		case "user":
+			text := normalizeUserText(extractMessageText(message.Content))
+			if text == "" {
+				continue
+			}
 			builder.addNode(&OpenClawSessionGraphNode{
-				ID:        payload.EntryID,
-				ParentID:  payload.ParentID,
-				EntryID:   payload.EntryID,
+				ID:        strings.TrimSpace(entry.ID),
+				ParentID:  strings.TrimSpace(entry.ParentID),
+				EntryID:   strings.TrimSpace(entry.ID),
 				Kind:      "task",
-				Timestamp: payload.Timestamp,
-				Summary:   payload.Summary,
-				Text:      payload.Text,
+				Timestamp: normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+				Summary:   truncateText(fmt.Sprintf("task: %s", text), 100),
+				Text:      truncateText(text, 2000),
 			})
-			appendGraphNodeEntryName(nodeIDsByEntryName, record.Entry, payload.EntryID)
-		case "tool_call":
-			nodeID := buildStoredToolCallNodeID(record.Entry, payload)
-			builder.addNode(&OpenClawSessionGraphNode{
-				ID:         nodeID,
-				ParentID:   payload.EntryID,
-				EntryID:    payload.EntryID,
-				ToolCallID: payload.ToolCallID,
-				Kind:       "tool_call",
-				Timestamp:  payload.Timestamp,
-				Summary:    payload.Summary,
-				Tool:       payload.Tool,
-				Query:      payload.Query,
-				URL:        payload.URL,
-				Path:       payload.Path,
-				Text:       payload.Text,
-			})
-			storedNode := builder.nodes[nodeID]
-			appendGraphNodeEntryName(nodeIDsByEntryName, record.Entry, nodeID)
-			if storedNode != nil {
-				toolCallNodesByAssistant[payload.EntryID] = append(toolCallNodesByAssistant[payload.EntryID], storedNode)
-				allToolCallNodes = append(allToolCallNodes, storedNode)
-			}
-			if payload.ToolCallID != "" && toolCallNodeIDByToolCallID[payload.ToolCallID] == "" {
-				toolCallNodeIDByToolCallID[payload.ToolCallID] = nodeID
-			}
-			if toolCallNodeIDToAssistantID[nodeID] == "" {
-				toolCallNodeIDToAssistantID[nodeID] = payload.EntryID
-			}
-
-			group := assistantGroups[payload.EntryID]
-			if group == nil {
-				group = &openClawAssistantStepGroup{
-					ParentID:  payload.ParentID,
-					Timestamp: payload.Timestamp,
+		case "assistant":
+			items := parseContentItems(message.Content)
+			toolNames := []string{}
+			hasToolCalls := false
+			for index, item := range items {
+				if item.Type != "toolCall" {
+					continue
 				}
-				assistantGroups[payload.EntryID] = group
+
+				hasToolCalls = true
+				context := extractOpenClawToolContext(item)
+				if item.ID != "" {
+					toolContexts[item.ID] = context
+				}
+
+				toolCallID := strings.TrimSpace(item.ID)
+				nodeID := buildRawToolCallNodeID(strings.TrimSpace(entry.ID), toolCallID, index)
+				builder.addNode(&OpenClawSessionGraphNode{
+					ID:         nodeID,
+					ParentID:   strings.TrimSpace(entry.ID),
+					EntryID:    strings.TrimSpace(entry.ID),
+					ToolCallID: toolCallID,
+					Kind:       "tool_call",
+					Timestamp:  normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+					Summary:    truncateText(buildToolCallSummary(context), 100),
+					Tool:       context.Tool,
+					Query:      context.Query,
+					URL:        context.URL,
+					Path:       context.Path,
+					Text:       truncateText(context.Command, 500),
+				})
+				rawToolCallsByAssistant[strings.TrimSpace(entry.ID)] = append(rawToolCallsByAssistant[strings.TrimSpace(entry.ID)], nodeID)
+				toolNames = append(toolNames, context.Tool)
 			}
-			group.ParentID = firstNonEmpty(group.ParentID, payload.ParentID)
-			group.Timestamp = chooseEarlierTimestamp(group.Timestamp, payload.Timestamp)
-			group.ToolNames = append(group.ToolNames, payload.Tool)
-			group.Text = firstNonEmpty(group.Text, payload.AssistantText)
-			group.ToolCallNodeIDs = appendUniqueString(group.ToolCallNodeIDs, nodeID)
-		case "tool_result":
-			toolResultRecords = append(toolResultRecords, record)
-		case "final":
+
+			if hasToolCalls {
+				builder.addNode(&OpenClawSessionGraphNode{
+					ID:        strings.TrimSpace(entry.ID),
+					ParentID:  strings.TrimSpace(entry.ParentID),
+					EntryID:   strings.TrimSpace(entry.ID),
+					Kind:      "assistant_step",
+					Timestamp: normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+					Summary:   buildAssistantStepSummary(toolNames),
+					Text:      truncateText(extractMessageText(message.Content), 2000),
+				})
+				continue
+			}
+
+			if message.StopReason != "stop" {
+				continue
+			}
+			text := extractMessageText(message.Content)
+			if text == "" {
+				continue
+			}
 			builder.addNode(&OpenClawSessionGraphNode{
-				ID:        payload.EntryID,
-				ParentID:  payload.ParentID,
-				EntryID:   payload.EntryID,
+				ID:        strings.TrimSpace(entry.ID),
+				ParentID:  strings.TrimSpace(entry.ParentID),
+				EntryID:   strings.TrimSpace(entry.ID),
 				Kind:      "final",
-				Timestamp: payload.Timestamp,
-				Summary:   payload.Summary,
-				Text:      payload.Text,
+				Timestamp: normalizeOpenClawTimestamp(entry.Timestamp, message.Timestamp),
+				Summary:   truncateText(fmt.Sprintf("final: %s", text), 100),
+				Text:      truncateText(text, 2000),
 			})
-			appendGraphNodeEntryName(nodeIDsByEntryName, record.Entry, payload.EntryID)
-		}
-	}
-
-	assistantIDs := make([]string, 0, len(assistantGroups))
-	for entryID := range assistantGroups {
-		assistantIDs = append(assistantIDs, entryID)
-	}
-	sort.Strings(assistantIDs)
-
-	for _, assistantID := range assistantIDs {
-		group := assistantGroups[assistantID]
-		builder.addNode(&OpenClawSessionGraphNode{
-			ID:        assistantID,
-			ParentID:  strings.TrimSpace(group.ParentID),
-			EntryID:   assistantID,
-			Kind:      "assistant_step",
-			Timestamp: strings.TrimSpace(group.Timestamp),
-			Summary:   buildAssistantStepSummary(group.ToolNames),
-			Text:      strings.TrimSpace(group.Text),
-		})
-	}
-
-	for _, record := range toolResultRecords {
-		payload := record.Payload
-		parentID := strings.TrimSpace(payload.ParentID)
-		originalParentID := ""
-
-		if payload.ToolCallID != "" {
-			if matchedNodeID := strings.TrimSpace(toolCallNodeIDByToolCallID[payload.ToolCallID]); matchedNodeID != "" {
-				originalParentID = parentID
-				parentID = matchedNodeID
+		case "toolResult":
+			payload, ok := buildToolResultPayload(anchorPayload.SessionID, entry, toolContexts[message.ToolCallID])
+			if !ok {
+				continue
 			}
-		}
 
-		if parentID == strings.TrimSpace(payload.ParentID) {
-			if matchedNodeID := matchToolResultToolCallNodeID(payload, toolCallNodesByAssistant[payload.ParentID], allToolCallNodes); matchedNodeID != "" && matchedNodeID != parentID {
-				originalParentID = parentID
-				parentID = matchedNodeID
-			}
-		}
+			parentID := strings.TrimSpace(entry.ParentID)
+			originalParentID := ""
+			if message.ToolCallID != "" {
+				for _, candidateID := range rawToolCallsByAssistant[parentID] {
+					candidate := builder.nodes[candidateID]
+					if candidate != nil && candidate.ToolCallID == strings.TrimSpace(message.ToolCallID) {
+						originalParentID = parentID
+						parentID = candidateID
+						break
+					}
+				}
 
-		builder.addNode(&OpenClawSessionGraphNode{
-			ID:               payload.EntryID,
-			ParentID:         parentID,
-			OriginalParentID: originalParentID,
-			EntryID:          payload.EntryID,
-			ToolCallID:       payload.ToolCallID,
-			Kind:             "tool_result",
-			Timestamp:        payload.Timestamp,
-			Summary:          payload.Summary,
-			Tool:             payload.Tool,
-			Query:            payload.Query,
-			URL:              payload.URL,
-			Path:             payload.Path,
-			OK:               cloneBoolPointer(payload.OK),
-			Error:            payload.Error,
-			Text:             payload.Text,
-		})
-		appendGraphNodeEntryName(nodeIDsByEntryName, record.Entry, payload.EntryID)
-		if assistantID := findAssistantStepIDForToolResult(parentID, toolCallNodeIDToAssistantID); assistantID != "" {
-			if group := assistantGroups[assistantID]; group != nil {
-				group.ToolResultNodeIDs = appendUniqueString(group.ToolResultNodeIDs, payload.EntryID)
+				if parentID == strings.TrimSpace(entry.ParentID) {
+					for _, candidate := range builder.nodes {
+						if candidate.Kind == "tool_call" && candidate.ToolCallID == strings.TrimSpace(message.ToolCallID) {
+							originalParentID = strings.TrimSpace(entry.ParentID)
+							parentID = candidate.ID
+							break
+						}
+					}
+				}
 			}
+
+			builder.addNode(&OpenClawSessionGraphNode{
+				ID:               strings.TrimSpace(entry.ID),
+				ParentID:         parentID,
+				OriginalParentID: originalParentID,
+				EntryID:          strings.TrimSpace(entry.ID),
+				ToolCallID:       strings.TrimSpace(message.ToolCallID),
+				Kind:             "tool_result",
+				Timestamp:        payload.Timestamp,
+				Summary:          payload.Summary,
+				Tool:             payload.Tool,
+				Query:            payload.Query,
+				URL:              payload.URL,
+				Path:             payload.Path,
+				OK:               cloneBoolPointer(payload.OK),
+				Error:            payload.Error,
+				Text:             payload.Text,
+			})
 		}
 	}
 
-	addOpenClawControlFlowEdges(builder, assistantIDs, assistantGroups)
-	markStoredGraphAnchor(builder, anchorPayload, anchorEntryName, nodeIDsByEntryName)
+	markRawGraphAnchor(builder, anchorPayload)
 	return builder.finalize()
 }
 
-func addOpenClawControlFlowEdges(builder *openClawSessionGraphBuilder, assistantIDs []string, assistantGroups map[string]*openClawAssistantStepGroup) {
-	if builder == nil {
-		return
-	}
-
-	for _, node := range builder.nodes {
-		if node == nil || node.Kind != "task" {
-			continue
-		}
-		builder.addEdge(node.ParentID, node.ID)
-	}
-
-	for _, assistantID := range assistantIDs {
-		group := assistantGroups[assistantID]
-		if group == nil {
-			continue
-		}
-		for _, toolCallNodeID := range group.ToolCallNodeIDs {
-			builder.addEdge(assistantID, toolCallNodeID)
-		}
-	}
-
-	for _, node := range builder.nodes {
-		if node == nil || node.Kind != "tool_result" {
-			continue
-		}
-		builder.addEdge(node.ParentID, node.ID)
-	}
-
-	downstreamRawParents := map[string][]string{}
-	for _, node := range builder.nodes {
-		if node == nil {
-			continue
-		}
-		if node.Kind != "assistant_step" && node.Kind != "final" {
-			continue
-		}
-		if parentID := strings.TrimSpace(node.ParentID); parentID != "" {
-			downstreamRawParents[parentID] = appendUniqueString(downstreamRawParents[parentID], node.ID)
-		}
-	}
-
-	joinedDownstreamNodeIDs := map[string]struct{}{}
-	for _, assistantID := range assistantIDs {
-		group := assistantGroups[assistantID]
-		if group == nil {
-			continue
-		}
-
-		toolCallNodeIDs := uniqueStrings(group.ToolCallNodeIDs)
-		toolResultNodeIDs := uniqueStrings(group.ToolResultNodeIDs)
-		if len(toolCallNodeIDs) <= 1 || len(toolResultNodeIDs) <= 1 {
-			continue
-		}
-
-		downstreamNodeIDs := []string{}
-		for _, toolResultNodeID := range toolResultNodeIDs {
-			downstreamNodeIDs = appendUniqueStrings(downstreamNodeIDs, downstreamRawParents[toolResultNodeID])
-		}
-		if len(downstreamNodeIDs) == 0 {
-			continue
-		}
-
-		joinID := fmt.Sprintf("join:%s", assistantID)
-		joinTimestamp := ""
-		for _, toolResultNodeID := range toolResultNodeIDs {
-			if node := builder.nodes[toolResultNodeID]; node != nil {
-				joinTimestamp = chooseLaterTimestamp(joinTimestamp, node.Timestamp)
-			}
-		}
-		builder.addNode(&OpenClawSessionGraphNode{
-			ID:        joinID,
-			Kind:      "join",
-			Timestamp: joinTimestamp,
-			Summary:   "join",
-		})
-		for _, toolResultNodeID := range toolResultNodeIDs {
-			builder.addEdge(toolResultNodeID, joinID)
-		}
-		for _, downstreamNodeID := range downstreamNodeIDs {
-			builder.addEdge(joinID, downstreamNodeID)
-			if downstreamNode := builder.nodes[downstreamNodeID]; downstreamNode != nil {
-				downstreamNode.ParentID = joinID
-			}
-			joinedDownstreamNodeIDs[downstreamNodeID] = struct{}{}
-		}
-	}
-
-	for _, node := range builder.nodes {
-		if node == nil {
-			continue
-		}
-		switch node.Kind {
-		case "assistant_step", "final":
-			if _, ok := joinedDownstreamNodeIDs[node.ID]; ok {
-				continue
-			}
-			builder.addEdge(node.ParentID, node.ID)
-		}
-	}
-}
-
-func appendGraphNodeEntryName(index map[string][]string, entry *Entry, nodeID string) {
-	if index == nil || entry == nil {
-		return
-	}
-
-	entryName := strings.TrimSpace(entry.Name)
-	nodeID = strings.TrimSpace(nodeID)
-	if entryName == "" || nodeID == "" {
-		return
-	}
-
-	for _, existingNodeID := range index[entryName] {
-		if existingNodeID == nodeID {
-			return
-		}
-	}
-	index[entryName] = append(index[entryName], nodeID)
-}
-
-func matchToolResultToolCallNodeID(payload openClawBehaviorPayload, assistantToolCalls []*OpenClawSessionGraphNode, allToolCalls []*OpenClawSessionGraphNode) string {
-	if matchedNodeID := chooseMatchingToolCallNodeID(payload, assistantToolCalls); matchedNodeID != "" {
-		return matchedNodeID
-	}
-
-	if len(assistantToolCalls) != len(allToolCalls) {
-		return chooseMatchingToolCallNodeID(payload, allToolCalls)
-	}
-
-	return ""
-}
-
-func chooseMatchingToolCallNodeID(payload openClawBehaviorPayload, candidates []*OpenClawSessionGraphNode) string {
-	filtered := make([]*OpenClawSessionGraphNode, 0, len(candidates))
-	seenNodeIDs := map[string]struct{}{}
-	for _, candidate := range candidates {
-		if candidate == nil || candidate.Kind != "tool_call" {
-			continue
-		}
-		if _, ok := seenNodeIDs[candidate.ID]; ok {
-			continue
-		}
-		seenNodeIDs[candidate.ID] = struct{}{}
-		filtered = append(filtered, candidate)
-	}
-
-	if len(filtered) == 0 {
-		return ""
-	}
-	if len(filtered) == 1 {
-		return filtered[0].ID
-	}
-
-	filtered = refineToolCallCandidates(filtered, payload.Query, func(node *OpenClawSessionGraphNode) string { return node.Query })
-	if len(filtered) == 1 {
-		return filtered[0].ID
-	}
-
-	filtered = refineToolCallCandidates(filtered, payload.URL, func(node *OpenClawSessionGraphNode) string { return node.URL })
-	if len(filtered) == 1 {
-		return filtered[0].ID
-	}
-
-	filtered = refineToolCallCandidates(filtered, payload.Path, func(node *OpenClawSessionGraphNode) string { return node.Path })
-	if len(filtered) == 1 {
-		return filtered[0].ID
-	}
-
-	filtered = refineToolCallCandidates(filtered, payload.Tool, func(node *OpenClawSessionGraphNode) string { return node.Tool })
-	if len(filtered) == 1 {
-		return filtered[0].ID
-	}
-
-	return ""
-}
-
-func refineToolCallCandidates(candidates []*OpenClawSessionGraphNode, expected string, selector func(node *OpenClawSessionGraphNode) string) []*OpenClawSessionGraphNode {
-	expected = strings.TrimSpace(expected)
-	if expected == "" {
-		return candidates
-	}
-
-	filtered := make([]*OpenClawSessionGraphNode, 0, len(candidates))
-	for _, candidate := range candidates {
-		if strings.TrimSpace(selector(candidate)) == expected {
-			filtered = append(filtered, candidate)
-		}
-	}
-	if len(filtered) == 0 {
-		return candidates
-	}
-	return filtered
-}
-
-func markStoredGraphAnchor(builder *openClawSessionGraphBuilder, anchorPayload openClawBehaviorPayload, anchorEntryName string, nodeIDsByEntryName map[string][]string) {
+func markRawGraphAnchor(builder *openClawSessionGraphBuilder, anchorPayload openClawBehaviorPayload) {
 	anchorNodeID := ""
 
-	if nodeIDs := nodeIDsByEntryName[strings.TrimSpace(anchorEntryName)]; len(nodeIDs) == 1 {
-		anchorNodeID = nodeIDs[0]
-	}
-
-	if anchorNodeID == "" {
-		switch anchorPayload.Kind {
-		case "tool_call":
-			candidates := []string{}
-			for _, node := range builder.nodes {
-				if !toolCallPayloadMatchesNode(anchorPayload, node) {
-					continue
-				}
-				candidates = append(candidates, node.ID)
+	switch anchorPayload.Kind {
+	case "tool_call":
+		candidates := []string{}
+		for _, node := range builder.nodes {
+			if !toolCallPayloadMatchesNode(anchorPayload, node) {
+				continue
 			}
+			candidates = append(candidates, node.ID)
+		}
 
-			switch len(candidates) {
-			case 1:
-				anchorNodeID = candidates[0]
-			default:
-				anchorNodeID = anchorPayload.EntryID
-			}
+		switch len(candidates) {
+		case 1:
+			anchorNodeID = candidates[0]
 		default:
-			if node := builder.nodes[anchorPayload.EntryID]; node != nil && node.Kind == anchorPayload.Kind {
-				anchorNodeID = node.ID
-			}
+			anchorNodeID = anchorPayload.EntryID
+		}
+	default:
+		if node := builder.nodes[anchorPayload.EntryID]; node != nil && node.Kind == anchorPayload.Kind {
+			anchorNodeID = node.ID
 		}
 	}
 
@@ -608,25 +493,13 @@ func markStoredGraphAnchor(builder *openClawSessionGraphBuilder, anchorPayload o
 	}
 }
 
-func buildStoredToolCallNodeID(entry *Entry, payload openClawBehaviorPayload) string {
-	if payload.ToolCallID != "" {
-		return fmt.Sprintf("tool_call:%s", payload.ToolCallID)
-	}
-	if entry != nil && strings.TrimSpace(entry.Name) != "" {
-		return fmt.Sprintf("tool_call_row:%s", strings.TrimSpace(entry.Name))
-	}
-	return fmt.Sprintf("tool_call:%s", strings.TrimSpace(payload.EntryID))
-}
-
 func newOpenClawSessionGraphBuilder() *openClawSessionGraphBuilder {
 	return &openClawSessionGraphBuilder{
 		graph: &OpenClawSessionGraph{
 			Nodes: []*OpenClawSessionGraphNode{},
 			Edges: []*OpenClawSessionGraphEdge{},
 		},
-		nodes:    map[string]*OpenClawSessionGraphNode{},
-		edges:    []*OpenClawSessionGraphEdge{},
-		edgeKeys: map[string]struct{}{},
+		nodes: map[string]*OpenClawSessionGraphNode{},
 	}
 }
 
@@ -663,28 +536,6 @@ func (b *openClawSessionGraphBuilder) addNode(node *OpenClawSessionGraphNode) {
 	b.nodes[cloned.ID] = &cloned
 }
 
-func (b *openClawSessionGraphBuilder) addEdge(source, target string) {
-	if b == nil {
-		return
-	}
-
-	source = strings.TrimSpace(source)
-	target = strings.TrimSpace(target)
-	if source == "" || target == "" || source == target {
-		return
-	}
-
-	key := fmt.Sprintf("%s->%s", source, target)
-	if _, ok := b.edgeKeys[key]; ok {
-		return
-	}
-	b.edgeKeys[key] = struct{}{}
-	b.edges = append(b.edges, &OpenClawSessionGraphEdge{
-		Source: source,
-		Target: target,
-	})
-}
-
 func (b *openClawSessionGraphBuilder) finalize() *OpenClawSessionGraph {
 	if b == nil || b.graph == nil {
 		return nil
@@ -708,15 +559,21 @@ func (b *openClawSessionGraphBuilder) finalize() *OpenClawSessionGraph {
 		updateOpenClawSessionGraphStats(&b.graph.Stats, node)
 	}
 
-	b.graph.Edges = make([]*OpenClawSessionGraphEdge, 0, len(b.edges))
-	for _, edge := range b.edges {
-		if edge == nil {
+	edgeKeys := map[string]struct{}{}
+	b.graph.Edges = []*OpenClawSessionGraphEdge{}
+	for _, node := range b.graph.Nodes {
+		if node.ParentID == "" || b.nodes[node.ParentID] == nil {
 			continue
 		}
-		if b.nodes[edge.Source] == nil || b.nodes[edge.Target] == nil {
+		key := fmt.Sprintf("%s->%s", node.ParentID, node.ID)
+		if _, ok := edgeKeys[key]; ok {
 			continue
 		}
-		b.graph.Edges = append(b.graph.Edges, edge)
+		edgeKeys[key] = struct{}{}
+		b.graph.Edges = append(b.graph.Edges, &OpenClawSessionGraphEdge{
+			Source: node.ParentID,
+			Target: node.ID,
+		})
 	}
 
 	sort.Slice(b.graph.Edges, func(i, j int) bool {
@@ -774,40 +631,13 @@ func updateOpenClawSessionGraphStats(stats *OpenClawSessionGraphStats, node *Ope
 	}
 }
 
-func findAssistantStepIDForToolResult(toolCallNodeID string, toolCallNodeIDToAssistantID map[string]string) string {
-	toolCallNodeID = strings.TrimSpace(toolCallNodeID)
-	if toolCallNodeID == "" {
-		return ""
+func buildRawToolCallNodeID(entryID, toolCallID string, index int) string {
+	entryID = strings.TrimSpace(entryID)
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID != "" {
+		return fmt.Sprintf("tool_call:%s", toolCallID)
 	}
-	return toolCallNodeIDToAssistantID[toolCallNodeID]
-}
-
-func appendUniqueString(values []string, value string) []string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return values
-	}
-	for _, existing := range values {
-		if strings.TrimSpace(existing) == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
-func appendUniqueStrings(values []string, additions []string) []string {
-	for _, addition := range additions {
-		values = appendUniqueString(values, addition)
-	}
-	return values
-}
-
-func uniqueStrings(values []string) []string {
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		result = appendUniqueString(result, value)
-	}
-	return result
+	return fmt.Sprintf("tool_call:%s:%d", entryID, index)
 }
 
 func buildAssistantStepSummary(toolNames []string) string {
@@ -840,10 +670,6 @@ func buildAssistantStepSummary(toolNames []string) string {
 func toolCallPayloadMatchesNode(payload openClawBehaviorPayload, node *OpenClawSessionGraphNode) bool {
 	if node == nil || node.Kind != "tool_call" {
 		return false
-	}
-
-	if payload.ToolCallID != "" {
-		return strings.TrimSpace(node.ToolCallID) == strings.TrimSpace(payload.ToolCallID)
 	}
 	if strings.TrimSpace(node.EntryID) != strings.TrimSpace(payload.EntryID) {
 		return false
@@ -888,8 +714,11 @@ func compareGraphNodes(left, right *OpenClawSessionGraphNode) int {
 		rightTimestamp = right.Timestamp
 		rightID = right.ID
 	}
-	if timestampOrder := compareOpenClawGraphTimestamps(leftTimestamp, rightTimestamp); timestampOrder != 0 {
-		return timestampOrder
+	if leftTimestamp < rightTimestamp {
+		return -1
+	}
+	if leftTimestamp > rightTimestamp {
+		return 1
 	}
 	if leftID < rightID {
 		return -1
@@ -909,65 +738,10 @@ func chooseEarlierTimestamp(current, next string) string {
 	if next == "" {
 		return current
 	}
-	if compareOpenClawGraphTimestamps(next, current) < 0 {
+	if next < current {
 		return next
 	}
 	return current
-}
-
-func chooseLaterTimestamp(current, next string) string {
-	current = strings.TrimSpace(current)
-	next = strings.TrimSpace(next)
-	if current == "" {
-		return next
-	}
-	if next == "" {
-		return current
-	}
-	if compareOpenClawGraphTimestamps(next, current) > 0 {
-		return next
-	}
-	return current
-}
-
-func compareOpenClawGraphTimestamps(left, right string) int {
-	left = strings.TrimSpace(left)
-	right = strings.TrimSpace(right)
-
-	leftUnixNano, leftOK := parseOpenClawGraphTimestamp(left)
-	rightUnixNano, rightOK := parseOpenClawGraphTimestamp(right)
-	if leftOK && rightOK {
-		if leftUnixNano < rightUnixNano {
-			return -1
-		}
-		if leftUnixNano > rightUnixNano {
-			return 1
-		}
-		return 0
-	}
-
-	if left < right {
-		return -1
-	}
-	if left > right {
-		return 1
-	}
-	return 0
-}
-
-func parseOpenClawGraphTimestamp(timestamp string) (_ int64, ok bool) {
-	timestamp = strings.TrimSpace(timestamp)
-	if timestamp == "" {
-		return 0, false
-	}
-
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-
-	return util.String2Time(timestamp).UnixNano(), true
 }
 
 func mergeBoolPointers(current, next *bool) *bool {

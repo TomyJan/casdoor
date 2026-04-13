@@ -164,7 +164,7 @@ class InvitationListPage extends BaseListPage {
         title: i18next.t("invitation:Used count"),
         dataIndex: "usedCount",
         key: "usedCount",
-        width: "140px",
+        width: "130px",
         sorter: true,
         ...this.getColumnSearchProps("usedCount"),
       },
@@ -261,7 +261,7 @@ class InvitationListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addInvitation.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

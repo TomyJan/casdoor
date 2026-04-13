@@ -194,7 +194,7 @@ class EnforcerListPage extends BaseListPage {
                 onClick={this.addEnforcer.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

@@ -13,8 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import {Button, Card, Result} from "antd";
-import Loading from "../common/Loading";
+import {Button, Card, Result, Spin} from "antd";
 import i18next from "i18next";
 import {authConfig} from "./Auth";
 import * as ApplicationBackend from "../backend/ApplicationBackend";
@@ -83,7 +82,9 @@ class ResultPage extends React.Component {
 
     if (application === null) {
       return (
-        <Loading type="page" tip={i18next.t("login:Loading")} />
+        <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
+          <Spin size="large" tip={i18next.t("login:Loading")} style={{paddingTop: "10%"}} />
+        </div>
       );
     }
 

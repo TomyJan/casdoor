@@ -374,10 +374,6 @@ func (c *ApiController) Logout() {
 			return
 		}
 
-		// Retrieve application and token before clearing the session
-		application := c.GetSessionApplication()
-		sessionToken := c.GetSessionToken()
-
 		c.ClearUserSession()
 		c.ClearTokenSession()
 
@@ -386,9 +382,7 @@ func (c *ApiController) Logout() {
 			return
 		}
 
-		// Propagate logout to external Custom OAuth2 providers
-		object.InvokeCustomProviderLogout(application, sessionToken)
-
+		application := c.GetSessionApplication()
 		if application == nil || application.Name == "app-built-in" || application.HomepageUrl == "" {
 			c.ResponseOk(user)
 			return
@@ -433,9 +427,6 @@ func (c *ApiController) Logout() {
 			return
 		}
 
-		// Propagate logout to external Custom OAuth2 providers
-		object.InvokeCustomProviderLogout(application, accessToken)
-
 		if redirectUri == "" {
 			c.ResponseOk()
 			return
@@ -477,10 +468,6 @@ func (c *ApiController) SsoLogout() {
 	// Default is true for backward compatibility
 	logoutAll := c.Ctx.Input.Query("logoutAll")
 	logoutAllSessions := logoutAll == "" || logoutAll == "true" || logoutAll == "1"
-
-	// Retrieve application and token before clearing the session
-	ssoApplication := c.GetSessionApplication()
-	ssoSessionToken := c.GetSessionToken()
 
 	c.ClearUserSession()
 	c.ClearTokenSession()
@@ -560,9 +547,6 @@ func (c *ApiController) SsoLogout() {
 			return
 		}
 	}
-
-	// Propagate logout to external Custom OAuth2 providers
-	object.InvokeCustomProviderLogout(ssoApplication, ssoSessionToken)
 
 	c.ResponseOk()
 }

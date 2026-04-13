@@ -10,7 +10,6 @@
 
 # production
 /build
-/build-temp
 
 # misc
 .DS_Store

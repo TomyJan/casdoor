@@ -618,7 +618,7 @@ func SyncLdapGroups(owner string, ldapGroups []LdapGroup, ldapId string) (newGro
 			existingGroup.Type = "ldap-synced"
 			existingGroup.UpdatedTime = util.GetCurrentTime()
 
-			_, err := UpdateGroup(existingGroup.GetId(), existingGroup, true, "")
+			_, err := UpdateGroup(existingGroup.GetId(), existingGroup)
 			if err == nil {
 				updatedGroups++
 			}

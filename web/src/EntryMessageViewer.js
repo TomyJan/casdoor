@@ -105,7 +105,7 @@ class EntryMessageViewer extends React.Component {
   }
 
   getEditorMaxWidth() {
-    return Setting.isMobile() ? window.innerWidth - 60 : 800;
+    return Setting.isMobile() ? window.innerWidth - 60 : 560;
   }
 
   getLabelSpan() {
@@ -223,7 +223,7 @@ class EntryMessageViewer extends React.Component {
 
     const columns = [
       {
-        title: i18next.t("general:Keys"),
+        title: i18next.t("user:Keys"),
         dataIndex: "name",
         key: "name",
         width: 220,
@@ -459,49 +459,15 @@ class EntryMessageViewer extends React.Component {
     );
   }
 
-  getMessageEditorHeight(text) {
-    const lineHeight = 22;
-    const lines = (text || "").split("\n").length;
-    const visibleRows = Math.min(30, Math.max(10, lines));
-    return `${visibleRows * lineHeight}px`;
-  }
-
-  getMessageEditorLang(rawMessage) {
-    if (rawMessage === undefined || rawMessage === null || rawMessage === "") {
-      return undefined;
-    }
-    const t = typeof rawMessage;
-    if (t === "object") {
-      return "json";
-    }
-    if (t === "number" || t === "boolean" || t === "bigint") {
-      return "json";
-    }
-    if (t === "string") {
-      try {
-        JSON.parse(rawMessage);
-        return "json";
-      } catch (e) {
-        return undefined;
-      }
-    }
-    return undefined;
-  }
-
   renderMessageEditor() {
-    const rawMessage = this.props.entry?.message;
-    const message = this.formatJsonValue(rawMessage) || "";
-    const lang = this.getMessageEditorLang(rawMessage);
+    const message = this.formatJsonValue(this.props.entry?.message) || "";
+    const lang = this.shouldRenderTraceViewer() ? "json" : undefined;
 
     return (
       <Editor
         value={message}
         lang={lang}
         readOnly
-        fillWidth
-        maxWidth={this.getEditorMaxWidth()}
-        dark
-        height={this.getMessageEditorHeight(message)}
       />
     );
   }
@@ -561,28 +527,28 @@ class EntryMessageViewer extends React.Component {
         ),
       },
       {
-        title: i18next.t("entry:Service"),
+        title: i18next.t("entry:Service", {defaultValue: "Service"}),
         dataIndex: "serviceName",
         key: "serviceName",
         width: 180,
         render: value => value || "-",
       },
       {
-        title: i18next.t("entry:Span ID"),
+        title: i18next.t("entry:Span ID", {defaultValue: "Span ID"}),
         dataIndex: ["span", "spanId"],
         key: "spanId",
         width: 180,
         render: value => value || "-",
       },
       {
-        title: i18next.t("subscription:Start time"),
+        title: i18next.t("entry:Start time", {defaultValue: "Start time"}),
         dataIndex: ["span", "startTimeUnixNano"],
         key: "startTimeUnixNano",
         width: 220,
         render: value => this.formatTraceTimestamp(value),
       },
       {
-        title: i18next.t("entry:Duration"),
+        title: i18next.t("entry:Duration", {defaultValue: "Duration"}),
         key: "duration",
         width: 120,
         render: (_, record) => this.getSpanDuration(record.span),
@@ -603,12 +569,12 @@ class EntryMessageViewer extends React.Component {
       <>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={this.getLabelSpan()}>
-            {i18next.t("entry:Trace spans")}:
+            {i18next.t("entry:Trace spans", {defaultValue: "Trace spans"})}:
           </Col>
           <Col span={this.getContentSpan()} >
             {error ? (
               <Alert
-                message={`${i18next.t("entry:Failed to parse trace message")}: ${error}`}
+                message={`${i18next.t("entry:Failed to parse trace message", {defaultValue: "Failed to parse trace message"})}: ${error}`}
                 type="warning"
                 showIcon
               />
@@ -625,7 +591,7 @@ class EntryMessageViewer extends React.Component {
                   style: {cursor: "pointer"},
                 })}
                 pagination={spans.length > 10 ? {pageSize: 10, hideOnSinglePage: true} : false}
-                locale={{emptyText: i18next.t("entry:No spans")}}
+                locale={{emptyText: i18next.t("entry:No spans", {defaultValue: "No spans"})}}
               />
             )}
           </Col>
@@ -641,7 +607,7 @@ class EntryMessageViewer extends React.Component {
     if (!traceSpan) {
       return (
         <Drawer
-          title={i18next.t("entry:Span detail")}
+          title={i18next.t("entry:Span detail", {defaultValue: "Span detail"})}
           width={Setting.isMobile() ? "100%" : 760}
           placement="right"
           destroyOnClose
@@ -653,7 +619,7 @@ class EntryMessageViewer extends React.Component {
 
     return (
       <Drawer
-        title={`${i18next.t("entry:Span detail")}: ${span?.name || span?.spanId || "-"}`}
+        title={`${i18next.t("entry:Span detail", {defaultValue: "Span detail"})}: ${span?.name || span?.spanId || "-"}`}
         width={Setting.isMobile() ? "100%" : 760}
         placement="right"
         destroyOnClose
@@ -670,55 +636,55 @@ class EntryMessageViewer extends React.Component {
           <Descriptions.Item label={i18next.t("general:Name")}>
             {span?.name || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Service")}>
+          <Descriptions.Item label={i18next.t("entry:Service", {defaultValue: "Service"})}>
             {traceSpan.serviceName || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("provider:Scope")}>
+          <Descriptions.Item label={i18next.t("provider:Scope", {defaultValue: "Scope"})}>
             {this.getScopeName(traceSpan.scope)}
           </Descriptions.Item>
           <Descriptions.Item label={i18next.t("general:Type")}>
             {span?.kind || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Trace ID")}>
+          <Descriptions.Item label={i18next.t("entry:Trace ID", {defaultValue: "Trace ID"})}>
             {span?.traceId || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Span ID")}>
+          <Descriptions.Item label={i18next.t("entry:Span ID", {defaultValue: "Span ID"})}>
             {span?.spanId || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Parent Span ID")}>
+          <Descriptions.Item label={i18next.t("entry:Parent Span ID", {defaultValue: "Parent Span ID"})}>
             {span?.parentSpanId || "-"}
           </Descriptions.Item>
           <Descriptions.Item label={i18next.t("general:Status")}>
             {this.getSpanStatus(span)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("subscription:Start time")}>
+          <Descriptions.Item label={i18next.t("entry:Start time", {defaultValue: "Start time"})}>
             {this.formatTraceTimestamp(span?.startTimeUnixNano)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("subscription:End time")}>
+          <Descriptions.Item label={i18next.t("subscription:End time", {defaultValue: "End time"})}>
             {this.formatTraceTimestamp(span?.endTimeUnixNano)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Duration")}>
+          <Descriptions.Item label={i18next.t("entry:Duration", {defaultValue: "Duration"})}>
             {this.getSpanDuration(span)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Resource schema URL")}>
+          <Descriptions.Item label={i18next.t("entry:Resource schema URL", {defaultValue: "Resource schema URL"})}>
             {traceSpan.resourceSchemaUrl || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Scope schema URL")}>
+          <Descriptions.Item label={i18next.t("entry:Scope schema URL", {defaultValue: "Scope schema URL"})}>
             {traceSpan.scopeSchemaUrl || "-"}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Resource attributes")}>
+          <Descriptions.Item label={i18next.t("entry:Resource attributes", {defaultValue: "Resource attributes"})}>
             {this.renderTraceAttributeTable(traceSpan.resourceAttributes)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Span attributes")}>
+          <Descriptions.Item label={i18next.t("entry:Span attributes", {defaultValue: "Span attributes"})}>
             {this.renderTraceAttributeTable(span?.attributes)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("webhook:Events")}>
+          <Descriptions.Item label={i18next.t("webhook:Events", {defaultValue: "Events"})}>
             {this.renderJsonEditor(span?.events)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Links")}>
+          <Descriptions.Item label={i18next.t("entry:Links", {defaultValue: "Links"})}>
             {this.renderJsonEditor(span?.links)}
           </Descriptions.Item>
-          <Descriptions.Item label={i18next.t("entry:Raw span")}>
+          <Descriptions.Item label={i18next.t("entry:Raw span", {defaultValue: "Raw span"})}>
             {this.renderJsonEditor(span)}
           </Descriptions.Item>
         </Descriptions>

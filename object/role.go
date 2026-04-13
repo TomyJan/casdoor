@@ -15,12 +15,11 @@
 package object
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/casdoor/casdoor/conf"
-	"github.com/casdoor/casdoor/i18n"
+
 	"github.com/casdoor/casdoor/util"
 	"github.com/xorm-io/core"
 )
@@ -88,7 +87,7 @@ func GetRole(id string) (*Role, error) {
 	return getRole(owner, name)
 }
 
-func UpdateRole(id string, role *Role, isGlobalAdmin bool, lang string) (bool, error) {
+func UpdateRole(id string, role *Role) (bool, error) {
 	owner, name := util.GetOwnerAndNameFromIdNoCheck(id)
 	oldRole, err := getRole(owner, name)
 	if err != nil {
@@ -97,10 +96,6 @@ func UpdateRole(id string, role *Role, isGlobalAdmin bool, lang string) (bool, e
 
 	if oldRole == nil {
 		return false, nil
-	}
-
-	if !isGlobalAdmin && oldRole.Owner != role.Owner {
-		return false, errors.New(i18n.Translate(lang, "auth:Unauthorized operation"))
 	}
 
 	renameRole := name != role.Name

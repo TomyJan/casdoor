@@ -111,7 +111,7 @@ class UaRuleTable extends React.Component {
         ),
       },
       {
-        title: i18next.t("webhook:Value"),
+        title: i18next.t("rule:Value"),
         dataIndex: "value",
         key: "value",
         render: (text, record, index) => (

@@ -223,7 +223,7 @@ class OrganizationListPage extends BaseListPage {
         title: i18next.t("general:Password type"),
         dataIndex: "passwordType",
         key: "passwordType",
-        width: "160px",
+        width: "150px",
         sorter: true,
         filterMultiple: false,
         filters: [
@@ -267,7 +267,7 @@ class OrganizationListPage extends BaseListPage {
         title: i18next.t("organization:User balance"),
         dataIndex: "userBalance",
         key: "userBalance",
-        width: "130px",
+        width: "120px",
         sorter: true,
         render: (text, record, index) => {
           return text ?? 0;
@@ -277,7 +277,7 @@ class OrganizationListPage extends BaseListPage {
         title: i18next.t("organization:Balance credit"),
         dataIndex: "balanceCredit",
         key: "balanceCredit",
-        width: "130px",
+        width: "120px",
         sorter: true,
         render: (text, record, index) => {
           return text ?? 0;
@@ -287,7 +287,7 @@ class OrganizationListPage extends BaseListPage {
         title: i18next.t("organization:Balance currency"),
         dataIndex: "balanceCurrency",
         key: "balanceCurrency",
-        width: "160px",
+        width: "140px",
         sorter: true,
         render: (text, record, index) => {
           return text || "USD";
@@ -346,7 +346,7 @@ class OrganizationListPage extends BaseListPage {
               <Button type="primary" size="small" disabled={!Setting.isAdminUser(this.props.account)} onClick={this.addOrganization.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

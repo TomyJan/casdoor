@@ -201,7 +201,7 @@ class AgentListPage extends BaseListPage {
         columns={filteredColumns}
         rowKey={record => `${record.owner}/${record.name}`}
         pagination={{...this.state.pagination, ...paginationProps}}
-        loading={this.getTableLoading()}
+        loading={this.state.loading}
         onChange={this.handleTableChange}
         size="middle"
         bordered

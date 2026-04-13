@@ -13,8 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import {Button, Result} from "antd";
-import Loading from "./common/Loading";
+import {Button, Result, Spin} from "antd";
 import * as PaymentBackend from "./backend/PaymentBackend";
 import * as PricingBackend from "./backend/PricingBackend";
 import * as SubscriptionBackend from "./backend/SubscriptionBackend";
@@ -230,7 +229,7 @@ class PaymentResultPage extends React.Component {
             title={`${i18next.t("payment:The payment is still under processing")}: ${payment.productsDisplayName}, ${i18next.t("payment:the current state is")}: ${payment.state}, ${i18next.t("payment:please wait for a few seconds...")}`}
             subTitle={i18next.t("payment:You can view your order details or return to the order list")}
             extra={[
-              <Loading key="returnUrl" tip={i18next.t("payment:Processing...")} style={{padding: "8px 0"}} />,
+              <Spin key="returnUrl" size="large" tip={i18next.t("payment:Processing...")} />,
             ]}
           />
         </div>

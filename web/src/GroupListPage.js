@@ -344,7 +344,7 @@ class GroupListPage extends BaseListPage {
               }
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

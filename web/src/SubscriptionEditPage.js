@@ -14,7 +14,6 @@
 
 import moment from "moment";
 import React from "react";
-import Loading from "./common/Loading";
 import {Button, Card, Col, DatePicker, Input, Row, Select} from "antd";
 import PaginateSelect from "./common/PaginateSelect";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -284,11 +283,11 @@ class SubscriptionEditPage extends React.Component {
               this.updateSubscriptionField("state", value);
             })}
             options={[
-              {value: "Pending", name: i18next.t("webhook:Pending")},
+              {value: "Pending", name: i18next.t("permission:Pending")},
               {value: "Active", name: i18next.t("subscription:Active")},
               {value: "Upcoming", name: i18next.t("subscription:Upcoming")},
               {value: "Expired", name: i18next.t("subscription:Expired")},
-              {value: "Error", name: i18next.t("general:Error")},
+              {value: "Error", name: i18next.t("subscription:Error")},
               {value: "Suspended", name: i18next.t("subscription:Suspended")},
             ].map((item) => Setting.getOption(item.name, item.value))}
             />
@@ -341,7 +340,7 @@ class SubscriptionEditPage extends React.Component {
     return (
       <div>
         {
-          this.state.subscription !== null ? this.renderSubscription() : <Loading type="page" tip={i18next.t("login:Loading")} />
+          this.state.subscription !== null ? this.renderSubscription() : null
         }
         {this.state.mode !== "view" && (
           <div style={{marginTop: "20px", marginLeft: "40px"}}>

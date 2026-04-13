@@ -15,7 +15,6 @@
 import {CopyOutlined} from "@ant-design/icons";
 import copy from "copy-to-clipboard";
 import React from "react";
-import Loading from "./common/Loading";
 import {Button, Card, Col, Input, InputNumber, Row, Select, Switch} from "antd";
 import * as ApplicationBackend from "./backend/ApplicationBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -274,7 +273,7 @@ class PricingEditPage extends React.Component {
     return (
       <div>
         {
-          this.state.pricing !== null ? this.renderPricing() : <Loading type="page" tip={i18next.t("login:Loading")} />
+          this.state.pricing !== null ? this.renderPricing() : null
         }
         {this.state.mode !== "view" && (
           <div style={{marginTop: "20px", marginLeft: "40px"}}>

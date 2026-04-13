@@ -142,7 +142,7 @@ class VerificationListPage extends BaseListPage {
         title: i18next.t("login:Verification code"),
         dataIndex: "code",
         key: "code",
-        width: "160px",
+        width: "150px",
         sorter: true,
         ...this.getColumnSearchProps("code"),
       },
@@ -175,7 +175,7 @@ class VerificationListPage extends BaseListPage {
               {i18next.t("general:Verifications")}&nbsp;&nbsp;&nbsp;&nbsp;
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

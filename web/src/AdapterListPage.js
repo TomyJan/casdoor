@@ -125,7 +125,7 @@ class AdapterListPage extends BaseListPage {
         title: i18next.t("adapter:Use same DB"),
         dataIndex: "useSameDb",
         key: "useSameDb",
-        width: "130px",
+        width: "120px",
         sorter: true,
         render: (text, record, index) => {
           return (
@@ -148,11 +148,11 @@ class AdapterListPage extends BaseListPage {
         title: i18next.t("syncer:Database type"),
         dataIndex: "databaseType",
         key: "databaseType",
-        width: "140px",
+        width: "120px",
         sorter: (a, b) => a.databaseType.localeCompare(b.databaseType),
       },
       {
-        title: i18next.t("general:Host"),
+        title: i18next.t("provider:Host"),
         dataIndex: "host",
         key: "host",
         width: "120px",
@@ -160,7 +160,7 @@ class AdapterListPage extends BaseListPage {
         ...this.getColumnSearchProps("host"),
       },
       {
-        title: i18next.t("general:Port"),
+        title: i18next.t("provider:Port"),
         dataIndex: "port",
         key: "port",
         width: "100px",
@@ -234,7 +234,7 @@ class AdapterListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addAdapter.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

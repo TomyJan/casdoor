@@ -109,7 +109,7 @@ class TokenListPage extends BaseListPage {
         title: i18next.t("general:Application"),
         dataIndex: "application",
         key: "application",
-        width: "130px",
+        width: "120px",
         sorter: true,
         ...this.getColumnSearchProps("application"),
         render: (text, record, index) => {
@@ -124,7 +124,7 @@ class TokenListPage extends BaseListPage {
         title: i18next.t("general:Organization"),
         dataIndex: "organization",
         key: "organization",
-        width: "140px",
+        width: "120px",
         sorter: true,
         ...this.getColumnSearchProps("organization"),
         render: (text, record, index) => {
@@ -233,7 +233,7 @@ class TokenListPage extends BaseListPage {
               <Button type="primary" size="small" onClick={this.addToken.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

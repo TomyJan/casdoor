@@ -250,9 +250,6 @@ func (c *ApiController) GetOAuthToken() {
 		}
 	}
 
-	// Extract DPoP proof header (RFC 9449). Empty string when DPoP is not used.
-	dpopProof := c.Ctx.Request.Header.Get("DPoP")
-
 	host := c.Ctx.Request.Host
 	if deviceCode != "" {
 		deviceAuthCache, ok := object.DeviceAuthMap.Load(deviceCode)
@@ -294,7 +291,7 @@ func (c *ApiController) GetOAuthToken() {
 		username = deviceAuthCacheCast.UserName
 	}
 
-	token, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, nonce, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), subjectToken, subjectTokenType, assertion, clientAssertion, clientAssertionType, audience, resource, dpopProof)
+	token, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, nonce, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), subjectToken, subjectTokenType, assertion, clientAssertion, clientAssertionType, audience, resource)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -343,8 +340,7 @@ func (c *ApiController) RefreshToken() {
 		return
 	}
 
-	dpopProof := c.Ctx.Request.Header.Get("DPoP")
-	refreshToken2, err := object.RefreshToken(application, grantType, refreshToken, scope, clientId, clientSecret, host, dpopProof)
+	refreshToken2, err := object.RefreshToken(application, grantType, refreshToken, scope, clientId, clientSecret, host)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -560,11 +556,6 @@ func (c *ApiController) IntrospectToken() {
 
 		introspectionResponse.TokenType = token.TokenType
 		introspectionResponse.ClientId = application.ClientId
-
-		// Expose DPoP key binding in the introspection response (RFC 9449 §8).
-		if token.DPoPJkt != "" {
-			introspectionResponse.Cnf = &object.DPoPConfirmation{JKT: token.DPoPJkt}
-		}
 	}
 
 	c.Data["json"] = introspectionResponse

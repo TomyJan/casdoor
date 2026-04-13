@@ -34,15 +34,6 @@ var (
 
 // StartWebhookDeliveryWorker starts the background worker for webhook delivery
 func StartWebhookDeliveryWorker() {
-	has, err := HasAnyWebhooks()
-	if err != nil {
-		logs.Error("failed to check webhooks, webhook delivery worker not started: " + err.Error())
-		return
-	}
-	if !has {
-		return
-	}
-
 	webhookWorkerMu.Lock()
 	defer webhookWorkerMu.Unlock()
 
@@ -113,24 +104,23 @@ func processWebhookEvents() {
 // deliverWebhookEvent attempts to deliver a single webhook event
 func deliverWebhookEvent(event *WebhookEvent) {
 	// Get the webhook configuration
-	webhook, err := GetWebhook(event.Webhook)
+	webhook, err := GetWebhook(event.WebhookName)
 	if err != nil {
-		logs.Error(fmt.Sprintf("failed to get webhook %s: %v", event.Webhook, err))
-		UpdateWebhookEventState(event, WebhookEventStatusFailed, 0, "", fmt.Errorf("get webhook: %w", err))
+		logs.Error(fmt.Sprintf("failed to get webhook %s: %v", event.WebhookName, err))
 		return
 	}
 
 	if webhook == nil {
 		// Webhook has been deleted, mark event as failed
-		event.State = WebhookEventStatusFailed
+		event.Status = WebhookEventStatusFailed
 		event.LastError = "Webhook not found"
-		UpdateWebhookEventState(event, WebhookEventStatusFailed, 0, "", fmt.Errorf("webhook not found"))
+		UpdateWebhookEventStatus(event, WebhookEventStatusFailed, 0, "", fmt.Errorf("webhook not found"))
 		return
 	}
 
 	if !webhook.IsEnabled {
 		// Disabled webhooks should finalize the event to avoid hot-looping forever.
-		UpdateWebhookEventState(event, WebhookEventStatusFailed, 0, "", fmt.Errorf("webhook is disabled"))
+		UpdateWebhookEventStatus(event, WebhookEventStatusFailed, 0, "", fmt.Errorf("webhook is disabled"))
 		return
 	}
 
@@ -138,9 +128,9 @@ func deliverWebhookEvent(event *WebhookEvent) {
 	var record Record
 	err = json.Unmarshal([]byte(event.Payload), &record)
 	if err != nil {
-		event.State = WebhookEventStatusFailed
+		event.Status = WebhookEventStatusFailed
 		event.LastError = fmt.Sprintf("Invalid payload: %v", err)
-		UpdateWebhookEventState(event, WebhookEventStatusFailed, 0, "", err)
+		UpdateWebhookEventStatus(event, WebhookEventStatusFailed, 0, "", err)
 		return
 	}
 
@@ -169,7 +159,7 @@ func deliverWebhookEvent(event *WebhookEvent) {
 	// Determine the result
 	if err == nil && statusCode >= 200 && statusCode < 300 {
 		// Success
-		UpdateWebhookEventState(event, WebhookEventStatusSuccess, statusCode, respBody, nil)
+		UpdateWebhookEventStatus(event, WebhookEventStatusSuccess, statusCode, respBody, nil)
 	} else {
 		// Failed - decide whether to retry
 		maxRetries := event.MaxRetries
@@ -183,7 +173,7 @@ func deliverWebhookEvent(event *WebhookEvent) {
 
 		if event.AttemptCount >= maxRetries {
 			// Max retries reached, mark as permanently failed
-			UpdateWebhookEventState(event, WebhookEventStatusFailed, statusCode, respBody, err)
+			UpdateWebhookEventStatus(event, WebhookEventStatusFailed, statusCode, respBody, err)
 		} else {
 			// Schedule retry
 			retryInterval := webhook.RetryInterval
@@ -193,9 +183,9 @@ func deliverWebhookEvent(event *WebhookEvent) {
 
 			nextRetryTime := calculateNextRetryTime(event.AttemptCount, retryInterval, webhook.UseExponentialBackoff)
 			event.NextRetryTime = nextRetryTime
-			event.State = WebhookEventStatusRetrying
+			event.Status = WebhookEventStatusRetrying
 
-			UpdateWebhookEventState(event, WebhookEventStatusRetrying, statusCode, respBody, err)
+			UpdateWebhookEventStatus(event, WebhookEventStatusRetrying, statusCode, respBody, err)
 		}
 	}
 }
@@ -240,7 +230,7 @@ func ReplayWebhookEvent(eventId string) error {
 	}
 
 	// Reset the event for replay
-	event.State = WebhookEventStatusPending
+	event.Status = WebhookEventStatusPending
 	event.AttemptCount = 0
 	event.NextRetryTime = ""
 	event.LastError = ""

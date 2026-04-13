@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import Loading from "../common/Loading";
+import {Spin} from "antd";
 import {withRouter} from "react-router-dom";
 import * as AuthBackend from "./AuthBackend";
 import * as Util from "./Util";
@@ -121,7 +121,7 @@ class SamlCallback extends React.Component {
       <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
         {
           (this.state.msg === null) ? (
-            <Loading type="page" tip={i18next.t("login:Signing in...")} />
+            <Spin size="large" tip={i18next.t("login:Signing in...")} style={{paddingTop: "10%"}} />
           ) : (
             Util.renderMessageLarge(this, this.state.msg)
           )

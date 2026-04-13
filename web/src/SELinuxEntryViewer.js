@@ -100,7 +100,7 @@ class SELinuxEntryViewer extends React.Component {
     return (
       <Row style={{marginTop: "20px"}}>
         <Col style={{marginTop: "5px"}} span={this.getLabelSpan()}>
-          {i18next.t("entry:SELinux event")}:
+          {i18next.t("entry:SELinux event", {defaultValue: "SELinux event"})}:
         </Col>
         <Col span={this.getContentSpan()}>
           <Descriptions
@@ -115,43 +115,43 @@ class SELinuxEntryViewer extends React.Component {
             <Descriptions.Item label={i18next.t("general:Type")}>
               {this.renderValue(details.auditType)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Decision")}>
+            <Descriptions.Item label={i18next.t("entry:Decision", {defaultValue: "Decision"})}>
               {this.renderValue(details.decision)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Permission")}>
+            <Descriptions.Item label={i18next.t("entry:Permission", {defaultValue: "Permission"})}>
               {this.renderValue(details.permission)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Audit stamp")}>
+            <Descriptions.Item label={i18next.t("entry:Audit stamp", {defaultValue: "Audit stamp"})}>
               {this.renderValue(details.auditStamp)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Permissive")}>
+            <Descriptions.Item label={i18next.t("entry:Permissive", {defaultValue: "Permissive"})}>
               {this.renderValue(details.permissive)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Process ID")}>
+            <Descriptions.Item label={i18next.t("entry:Process ID", {defaultValue: "Process ID"})}>
               {this.renderValue(details.pid)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Command")}>
+            <Descriptions.Item label={i18next.t("entry:Command", {defaultValue: "Command"})}>
               {this.renderValue(details.command)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Executable")}>
+            <Descriptions.Item label={i18next.t("entry:Executable", {defaultValue: "Executable"})}>
               {this.renderValue(details.executable)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Target class")}>
+            <Descriptions.Item label={i18next.t("entry:Target class", {defaultValue: "Target class"})}>
               {this.renderValue(details.targetClass)}
             </Descriptions.Item>
             <Descriptions.Item label={i18next.t("general:Path")}>
               {this.renderValue(details.path)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Device")}>
+            <Descriptions.Item label={i18next.t("entry:Device", {defaultValue: "Device"})}>
               {this.renderValue(details.device)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Inode")}>
+            <Descriptions.Item label={i18next.t("entry:Inode", {defaultValue: "Inode"})}>
               {this.renderValue(details.inode)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Source context")} span={Setting.isMobile() ? 1 : 2}>
+            <Descriptions.Item label={i18next.t("entry:Source context", {defaultValue: "Source context"})} span={Setting.isMobile() ? 1 : 2}>
               {this.renderValue(details.sourceContext)}
             </Descriptions.Item>
-            <Descriptions.Item label={i18next.t("entry:Target context")} span={Setting.isMobile() ? 1 : 2}>
+            <Descriptions.Item label={i18next.t("entry:Target context", {defaultValue: "Target context"})} span={Setting.isMobile() ? 1 : 2}>
               {this.renderValue(details.targetContext)}
             </Descriptions.Item>
           </Descriptions>

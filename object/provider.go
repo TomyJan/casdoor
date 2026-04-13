@@ -17,8 +17,6 @@ package object
 import (
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
@@ -50,7 +48,6 @@ type Provider struct {
 	CustomAuthUrl     string            `xorm:"varchar(200)" json:"customAuthUrl"`
 	CustomTokenUrl    string            `xorm:"varchar(200)" json:"customTokenUrl"`
 	CustomUserInfoUrl string            `xorm:"varchar(200)" json:"customUserInfoUrl"`
-	CustomLogoutUrl   string            `xorm:"varchar(200)" json:"customLogoutUrl"`
 	CustomLogo        string            `xorm:"varchar(200)" json:"customLogo"`
 	Scopes            string            `xorm:"varchar(100)" json:"scopes"`
 	UserMapping       map[string]string `xorm:"varchar(500)" json:"userMapping"`
@@ -242,7 +239,7 @@ func UpdateProvider(id string, provider *Provider) (bool, error) {
 	}
 
 	if name != provider.Name {
-		err := providerChangeTrigger(owner, name, provider.Name)
+		err := providerChangeTrigger(name, provider.Name)
 		if err != nil {
 			return false, err
 		}
@@ -553,7 +550,7 @@ func GetIdvProviderByApplication(applicationId, isCurrentProvider, lang string) 
 	return nil, nil
 }
 
-func providerChangeTrigger(owner string, oldName string, newName string) error {
+func providerChangeTrigger(oldName string, newName string) error {
 	session := ormer.Engine.NewSession()
 	defer session.Close()
 
@@ -584,11 +581,6 @@ func providerChangeTrigger(owner string, oldName string, newName string) error {
 	resource := new(Resource)
 	resource.Provider = newName
 	_, err = session.Where("provider=?", oldName).Update(resource)
-	if err != nil {
-		return err
-	}
-
-	_, err = session.Where("owner = ? AND provider_name = ?", owner, oldName).Cols("provider_name").Update(&ThirdPartyLink{ProviderName: newName})
 	if err != nil {
 		return err
 	}
@@ -693,44 +685,4 @@ func GetLogProviderFromProvider(provider *Provider) (log.LogProvider, error) {
 	}
 
 	return log.GetLogProvider(provider.Type, provider.Host, provider.Port, provider.Title)
-}
-
-// InvokeCustomProviderLogout iterates through the application's Custom OAuth2 providers
-// and calls their logout endpoint (if configured) to terminate the upstream session.
-func InvokeCustomProviderLogout(application *Application, accessToken string) {
-	if application == nil {
-		return
-	}
-
-	for _, providerItem := range application.Providers {
-		provider := providerItem.Provider
-		if provider == nil || provider.Category != "OAuth" || !strings.HasPrefix(provider.Type, "Custom") {
-			continue
-		}
-		if provider.CustomLogoutUrl == "" {
-			continue
-		}
-
-		go callProviderLogoutUrl(provider, accessToken)
-	}
-}
-
-// callProviderLogoutUrl sends a logout/token-revocation request to the provider's logout URL.
-// Supports RFC 7009 token revocation and Keycloak-style end_session endpoints.
-func callProviderLogoutUrl(provider *Provider, accessToken string) {
-	params := url.Values{}
-	params.Set("token", accessToken)
-	params.Set("client_id", provider.ClientId)
-	params.Set("client_secret", provider.ClientSecret)
-
-	resp, err := http.PostForm(provider.CustomLogoutUrl, params)
-	if err != nil {
-		util.LogWarning(nil, "InvokeCustomProviderLogout: failed to call logout URL %s for provider %s: %v", provider.CustomLogoutUrl, provider.Name, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		util.LogWarning(nil, "InvokeCustomProviderLogout: logout URL %s returned status %d for provider %s", provider.CustomLogoutUrl, resp.StatusCode, provider.Name)
-	}
 }

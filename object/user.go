@@ -227,8 +227,6 @@ type User struct {
 	Ldap       string            `xorm:"ldap varchar(100)" json:"ldap"`
 	Properties map[string]string `json:"properties"`
 
-	ThirdPartyLinks []*ThirdPartyLink `xorm:"-" json:"thirdPartyLinks,omitempty"`
-
 	Roles       []*Role       `json:"roles"`
 	Permissions []*Permission `json:"permissions"`
 	Groups      []string      `xorm:"mediumtext" json:"groups"`
@@ -408,9 +406,6 @@ func GetUsersByTagWithFilter(owner string, tag string, cond builder.Cond) ([]*Us
 
 func GetSortedUsers(owner string, sorter string, limit int) ([]*User, error) {
 	users := []*User{}
-	if !util.FilterSQLIdentifier(sorter) {
-		return nil, fmt.Errorf("object.GetSortedUsers() error: invalid sorter field: %s", sorter)
-	}
 	err := ormer.Engine.Desc(sorter).Limit(limit, 0).Find(&users, &User{Owner: owner})
 	if err != nil {
 		return nil, err
@@ -647,17 +642,7 @@ func GetUser(id string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	user, err := getUser(owner, name)
-	if err != nil {
-		return nil, err
-	}
-	if user != nil {
-		err = user.PopulateThirdPartyLinks()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return user, nil
+	return getUser(owner, name)
 }
 
 func GetUserNoCheck(id string) (*User, error) {
@@ -832,7 +817,7 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 	}
 
 	if name != user.Name {
-		err := userChangeTrigger(owner, name, user.Name)
+		err := userChangeTrigger(name, user.Name)
 		if err != nil {
 			return false, err
 		}
@@ -930,7 +915,7 @@ func UpdateUserForAllFields(id string, user *User) (bool, error) {
 	}
 
 	if name != user.Name {
-		err := userChangeTrigger(owner, name, user.Name)
+		err := userChangeTrigger(name, user.Name)
 		if err != nil {
 			return false, err
 		}
@@ -1185,11 +1170,6 @@ func DeleteUser(user *User) (bool, error) {
 		return false, err
 	}
 
-	_, err = DeleteThirdPartyLinksByUser(user.Owner, user.Name)
-	if err != nil {
-		return false, err
-	}
-
 	organization, err := GetOrganizationByUser(user)
 	if err != nil {
 		return false, err
@@ -1260,30 +1240,8 @@ func LinkUserAccount(user *User, field string, value string) (bool, error) {
 	return SetUserField(user, field, value)
 }
 
-func LinkFlexibleCustomAccount(user *User, providerName string, providerId string) (bool, error) {
-	if providerId == "" {
-		return DeleteThirdPartyLink(user.Owner, user.Name, providerName)
-	}
-	link := &ThirdPartyLink{
-		Owner:        user.Owner,
-		UserName:     user.Name,
-		ProviderName: providerName,
-		ProviderId:   providerId,
-	}
-	return AddThirdPartyLink(link)
-}
-
 func (user *User) GetId() string {
 	return fmt.Sprintf("%s/%s", user.Owner, user.Name)
-}
-
-func (user *User) PopulateThirdPartyLinks() error {
-	links, err := GetThirdPartyLinksByUser(user.Owner, user.Name)
-	if err != nil {
-		return err
-	}
-	user.ThirdPartyLinks = links
-	return nil
 }
 
 func (user *User) GetFriendlyName() string {
@@ -1334,7 +1292,7 @@ func DeleteGroupForUser(user string, group string) (bool, error) {
 	return userEnforcer.DeleteGroupForUser(user, group)
 }
 
-func userChangeTrigger(owner string, oldName string, newName string) error {
+func userChangeTrigger(oldName string, newName string) error {
 	session := ormer.Engine.NewSession()
 	defer session.Close()
 
@@ -1352,12 +1310,12 @@ func userChangeTrigger(owner string, oldName string, newName string) error {
 	for _, role := range roles {
 		for j, u := range role.Users {
 			// u = organization/username
-			roleOwner, roleName, err := util.GetOwnerAndNameFromIdWithError(u)
+			owner, name, err := util.GetOwnerAndNameFromIdWithError(u)
 			if err != nil {
 				return err
 			}
-			if roleName == oldName {
-				role.Users[j] = util.GetId(roleOwner, newName)
+			if name == oldName {
+				role.Users[j] = util.GetId(owner, newName)
 			}
 		}
 		_, err = session.Where("name=?", role.Name).And("owner=?", role.Owner).Update(role)
@@ -1378,12 +1336,12 @@ func userChangeTrigger(owner string, oldName string, newName string) error {
 			}
 
 			// u = organization/username
-			permOwner, permName, err := util.GetOwnerAndNameFromIdWithError(u)
+			owner, name, err := util.GetOwnerAndNameFromIdWithError(u)
 			if err != nil {
 				return err
 			}
-			if permName == oldName {
-				permission.Users[j] = util.GetId(permOwner, newName)
+			if name == oldName {
+				permission.Users[j] = util.GetId(owner, newName)
 			}
 		}
 		_, err = session.Where("name=?", permission.Name).And("owner=?", permission.Owner).Update(permission)
@@ -1395,11 +1353,6 @@ func userChangeTrigger(owner string, oldName string, newName string) error {
 	resource := new(Resource)
 	resource.User = newName
 	_, err = session.Where("user=?", oldName).Update(resource)
-	if err != nil {
-		return err
-	}
-
-	_, err = session.Where("owner = ? AND user_name = ?", owner, oldName).Cols("user_name").Update(&ThirdPartyLink{UserName: newName})
 	if err != nil {
 		return err
 	}

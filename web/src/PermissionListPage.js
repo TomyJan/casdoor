@@ -415,7 +415,7 @@ class PermissionListPage extends BaseListPage {
         dataIndex: "approveTime",
         key: "approveTime",
         filterMultiple: false,
-        width: "130px",
+        width: "120px",
         sorter: true,
         render: (text, record, index) => {
           return Setting.getFormattedDate(text);
@@ -428,7 +428,7 @@ class PermissionListPage extends BaseListPage {
         filterMultiple: false,
         filters: [
           {text: i18next.t("permission:Approved"), value: "Approved"},
-          {text: i18next.t("webhook:Pending"), value: "Pending"},
+          {text: i18next.t("permission:Pending"), value: "Pending"},
         ],
         width: "120px",
         sorter: true,
@@ -437,7 +437,7 @@ class PermissionListPage extends BaseListPage {
           case "Approved":
             return Setting.getTag("success", i18next.t("permission:Approved"));
           case "Pending":
-            return Setting.getTag("error", i18next.t("webhook:Pending"));
+            return Setting.getTag("error", i18next.t("permission:Pending"));
           default:
             return null;
           }
@@ -484,7 +484,7 @@ class PermissionListPage extends BaseListPage {
               }
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

@@ -93,7 +93,7 @@ func (syncer *Syncer) syncGroups() error {
 			if existingGroup.DisplayName != oGroup.DisplayName {
 				existingGroup.DisplayName = oGroup.DisplayName
 				existingGroup.UpdatedTime = util.GetCurrentTime()
-				_, err = UpdateGroup(existingGroup.GetId(), existingGroup, true, "")
+				_, err = UpdateGroup(existingGroup.GetId(), existingGroup)
 				if err != nil {
 					fmt.Printf("Failed to update group %s: %v\n", existingGroup.Name, err)
 				} else {

@@ -17,44 +17,19 @@ import CodeMirror from "@uiw/react-codemirror";
 import {materialDark} from "@uiw/codemirror-theme-material";
 import {langs} from "@uiw/codemirror-extensions-langs";
 
-const defaultFrameStyle = {
-  borderRadius: 10,
-  overflow: "hidden",
-  border: "1px solid #e2e8f0",
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.06)",
-};
-
 export const Editor = (props) => {
-  const {
-    frameless = false,
-    wrapperStyle: userWrapperStyle,
-    fillWidth,
-    fillHeight,
-    dark,
-    lang,
-    value,
-    onChange,
-    readOnly,
-    style: userStyle,
-    maxWidth,
-    minWidth,
-    maxHeight,
-    minHeight,
-    ...rest
-  } = props;
-
+  let style = {};
   let height = props.height;
   let width = props.width;
-  let style = {};
   const copy2StyleProps = [
     "width", "maxWidth", "minWidth",
     "height", "maxHeight", "minHeight",
   ];
-  if (fillHeight) {
+  if (props.fillHeight) {
     height = "100%";
     style = {...style, height: "100%"};
   }
-  if (fillWidth) {
+  if (props.fillWidth) {
     width = "100%";
     style = {...style, width: "100%"};
   }
@@ -67,16 +42,11 @@ export const Editor = (props) => {
       style = {...style, [el]: props[el]};
     }
   });
-  if (!frameless) {
-    const {maxWidth: _omitMw, minWidth: _omitMi, ...innerRest} = style;
-    style = {...innerRest, borderRadius: 0};
+  if (props.style) {
+    style = {...style, ...props.style};
   }
-  if (userStyle) {
-    style = {...style, ...userStyle};
-  }
-
   let extensions = [];
-  switch (lang) {
+  switch (props.lang) {
   case "javascript":
   case "js":
     extensions = [langs.javascript()];
@@ -95,58 +65,18 @@ export const Editor = (props) => {
     break;
   }
 
-  const codeMirror = (
+  return (
     <CodeMirror
-      {...rest}
-      value={value}
+      value={props.value}
+      {...props}
       width={width}
       height={height}
       style={style}
-      readOnly={readOnly}
-      theme={dark ? materialDark : "light"}
+      readOnly={props.readOnly}
+      theme={props.dark ? materialDark : "light"}
       extensions={extensions}
-      onChange={onChange}
+      onChange={props.onChange}
     />
-  );
-
-  if (frameless) {
-    return codeMirror;
-  }
-
-  const outerStyle = {
-    boxSizing: "border-box",
-    ...defaultFrameStyle,
-    ...userWrapperStyle,
-  };
-  if (fillWidth) {
-    outerStyle.width = "100%";
-  }
-  if (["number", "string"].includes(typeof maxWidth)) {
-    outerStyle.maxWidth = maxWidth;
-  }
-  if (["number", "string"].includes(typeof minWidth)) {
-    outerStyle.minWidth = minWidth;
-  }
-  if (fillHeight) {
-    outerStyle.height = "100%";
-    outerStyle.display = "flex";
-    outerStyle.flexDirection = "column";
-    if (["number", "string"].includes(typeof minHeight)) {
-      outerStyle.minHeight = minHeight;
-    } else {
-      outerStyle.minHeight = 0;
-    }
-  } else if (["number", "string"].includes(typeof minHeight)) {
-    outerStyle.minHeight = minHeight;
-  }
-  if (["number", "string"].includes(typeof maxHeight)) {
-    outerStyle.maxHeight = maxHeight;
-  }
-
-  return (
-    <div style={outerStyle}>
-      {codeMirror}
-    </div>
   );
 };
 

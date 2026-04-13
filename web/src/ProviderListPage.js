@@ -139,7 +139,6 @@ class ProviderListPage extends BaseListPage {
           {text: "OAuth", value: "OAuth"},
           {text: "Payment", value: "Payment"},
           {text: "SAML", value: "SAML"},
-          {text: "Scan", value: "Scan"},
           {text: "SMS", value: "SMS"},
           {text: "Storage", value: "Storage"},
           {text: "Web3", value: "Web3"},
@@ -161,7 +160,6 @@ class ProviderListPage extends BaseListPage {
           {text: "OAuth", value: "OAuth", children: Setting.getProviderTypeOptions("OAuth").map((o) => {return {text: o.id, value: o.name};})},
           {text: "Payment", value: "Payment", children: Setting.getProviderTypeOptions("Payment").map((o) => {return {text: o.id, value: o.name};})},
           {text: "SAML", value: "SAML", children: Setting.getProviderTypeOptions("SAML").map((o) => {return {text: o.id, value: o.name};})},
-          {text: "Scan", value: "Scan", children: Setting.getProviderTypeOptions("Scan").map((o) => {return {text: o.id, value: o.name};})},
           {text: "SMS", value: "SMS", children: Setting.getProviderTypeOptions("SMS").map((o) => {return {text: o.id, value: o.name};})},
           {text: "Storage", value: "Storage", children: Setting.getProviderTypeOptions("Storage").map((o) => {return {text: o.id, value: o.name};})},
           {text: "Web3", value: "Web3", children: Setting.getProviderTypeOptions("Web3").map((o) => {return {text: o.id, value: o.name};})},
@@ -238,7 +236,7 @@ class ProviderListPage extends BaseListPage {
               <Button id="add-button" type="primary" size="small" onClick={this.addProvider.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>

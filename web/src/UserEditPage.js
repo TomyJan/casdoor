@@ -15,11 +15,10 @@
 import React from "react";
 import {
   Button, Card, Col, Form, Input, InputNumber, Layout, List,
-  Menu, Result, Row, Select, Space, Switch, Tabs, Tag, Tooltip
+  Menu, Result, Row, Select, Space, Spin, Switch, Tabs, Tag, Tooltip
 } from "antd";
 import {withRouter} from "react-router-dom";
 import {TotpMfaType} from "./auth/MfaSetupPage";
-import Loading from "./common/Loading";
 import * as GroupBackend from "./backend/GroupBackend";
 import * as UserBackend from "./backend/UserBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -745,7 +744,7 @@ class UserEditPage extends React.Component {
       return (
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("general:Tag"), i18next.t("product:Tag - Tooltip"))} :
+            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("product:Tag - Tooltip"))} :
           </Col>
           <Col span={22} >
             {
@@ -1594,7 +1593,7 @@ class UserEditPage extends React.Component {
     return (
       <div>
         {
-          this.state.loading ? <Loading type="page" tip={i18next.t("login:Loading")} /> : (
+          this.state.loading ? <Spin size="large" style={{marginLeft: "50%", marginTop: "10%"}} /> : (
             this.state.user !== null ? this.renderUser() :
               <Result
                 status="404"

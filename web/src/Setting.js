@@ -15,7 +15,7 @@
 import React from "react";
 import {Link} from "react-router-dom";
 import {Button, Select, Tag, Tooltip, message, theme} from "antd";
-import {QuestionCircleOutlined} from "@ant-design/icons";
+import {QuestionCircleTwoTone} from "@ant-design/icons";
 import {isMobile as isMobileDevice} from "react-device-detect";
 import "./i18n";
 import i18next from "i18next";
@@ -246,10 +246,6 @@ export const OtherProviderInfo = {
       logo: `${StaticBaseUrl}/img/social_custom.png`,
       url: "https://door.casdoor.com/",
     },
-    "Custom Flexible": {
-      logo: `${StaticBaseUrl}/img/social_custom.png`,
-      url: "https://door.casdoor.com/",
-    },
   },
   Payment: {
     "Dummy": {
@@ -477,12 +473,6 @@ export const OtherProviderInfo = {
       url: "https://github.com/SELinuxProject/selinux",
     },
   },
-  Scan: {
-    "MCP Scan": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
-      url: "",
-    },
-  },
 };
 
 export const UserFields = ["owner", "name", "password", "display_name", "id", "type", "email", "phone", "country_code",
@@ -542,7 +532,7 @@ export const GetTranslatedUserItems = () => {
     {name: "ID verification", label: i18next.t("user:ID verification")},
     {name: "Homepage", label: i18next.t("user:Homepage")},
     {name: "Bio", label: i18next.t("user:Bio")},
-    {name: "Tag", label: i18next.t("general:Tag")},
+    {name: "Tag", label: i18next.t("user:Tag")},
     {name: "Language", label: i18next.t("user:Language")},
     {name: "Gender", label: i18next.t("user:Gender")},
     {name: "Birthday", label: i18next.t("user:Birthday")},
@@ -1322,7 +1312,6 @@ export function getProviderTypeOptions(category) {
         {id: "Custom8", name: "Custom8"},
         {id: "Custom9", name: "Custom9"},
         {id: "Custom10", name: "Custom10"},
-        {id: "Custom Flexible", name: "Custom Flexible"},
       ]
     );
   } else if (category === "Email") {
@@ -1380,7 +1369,6 @@ export function getProviderTypeOptions(category) {
       {id: "Aliyun IDaaS", name: "Aliyun IDaaS"},
       {id: "Keycloak", name: "Keycloak"},
       {id: "Custom", name: "Custom"},
-      {id: "Custom Flexible", name: "Custom Flexible"},
     ]);
   } else if (category === "Payment") {
     return ([
@@ -1455,10 +1443,6 @@ export function getProviderTypeOptions(category) {
       {id: "System Log", name: "System Log"},
       {id: "Agent", name: "Agent"},
       {id: "SELinux Log", name: "SELinux Log"},
-    ]);
-  } else if (category === "Scan") {
-    return ([
-      {id: "MCP Scan", name: "MCP Scan"},
     ]);
   } else {
     return [];
@@ -1594,7 +1578,7 @@ function renderLink(url, text, onClick) {
 
   if (url.startsWith("/")) {
     return (
-      <Link className="login-link" style={{float: "right"}} to={url} onClick={() => {
+      <Link style={{float: "right"}} to={url} onClick={() => {
         if (onClick !== null) {
           onClick();
         }
@@ -1602,7 +1586,7 @@ function renderLink(url, text, onClick) {
     );
   } else if (url.startsWith("http")) {
     return (
-      <a className="login-link" style={{float: "right"}} href={url} onClick={() => {
+      <a style={{float: "right"}} href={url} onClick={() => {
         if (onClick !== null) {
           onClick();
         }
@@ -1682,7 +1666,7 @@ export function getLabel(text, tooltip) {
     <React.Fragment>
       <span style={{marginRight: 4}}>{text}</span>
       <Tooltip placement="top" title={tooltip}>
-        <QuestionCircleOutlined style={{color: "var(--ant-color-primary)"}} />
+        <QuestionCircleTwoTone twoToneColor="rgb(45,120,213)" />
       </Tooltip>
     </React.Fragment>
   );

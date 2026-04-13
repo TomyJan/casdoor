@@ -14,47 +14,12 @@
 
 import * as Setting from "../Setting";
 
-function fetchDashboardApi(path, owner) {
-  const apiPath = `/api/${path}`;
-  const url = `${Setting.ServerUrl}${apiPath}?owner=${owner}`;
-  return fetch(url, {
+export function getDashboard(owner) {
+  return fetch(`${Setting.ServerUrl}/api/get-dashboard?owner=${owner}`, {
     method: "GET",
     credentials: "include",
     headers: {
       "Accept-Language": Setting.getAcceptLanguage(),
     },
-  }).then(async res => {
-    if (!res.ok) {
-      const statusText = `${res.status} ${res.statusText}`;
-      let bodyMsg = "";
-      try {
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const json = await res.json();
-          bodyMsg = json.msg || json.message || "";
-        }
-      } catch (e) {
-        bodyMsg = "";
-      }
-      const detail = bodyMsg ? `${statusText} - ${bodyMsg}` : statusText;
-      return {status: "error", msg: `${apiPath}: ${detail}`};
-    }
-    return res.json();
-  });
-}
-
-export function getDashboard(owner) {
-  return fetchDashboardApi("get-dashboard", owner);
-}
-
-export function getDashboardProviders(owner) {
-  return fetchDashboardApi("get-dashboard-providers", owner);
-}
-
-export function getDashboardMfa(owner) {
-  return fetchDashboardApi("get-dashboard-mfa", owner);
-}
-
-export function getDashboardHeatmap(owner) {
-  return fetchDashboardApi("get-dashboard-heatmap", owner);
+  }).then(res => res.json());
 }

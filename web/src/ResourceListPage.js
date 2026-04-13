@@ -148,7 +148,7 @@ class ResourceListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("general:Parent"),
+        title: i18next.t("resource:Parent"),
         dataIndex: "parent",
         key: "parent",
         width: "80px",
@@ -174,7 +174,7 @@ class ResourceListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("general:Tag"),
+        title: i18next.t("user:Tag"),
         dataIndex: "tag",
         key: "tag",
         width: "80px",
@@ -300,7 +300,7 @@ class ResourceListPage extends BaseListPage {
               }
             </div>
           )}
-          loading={this.getTableLoading()}
+          loading={this.state.loading}
           onChange={this.handleTableChange}
         />
       </div>
