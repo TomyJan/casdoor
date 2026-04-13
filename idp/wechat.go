@@ -192,10 +192,12 @@ func (idp *WeChatIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		delete(WechatCacheMap, accessToken[10:])
 		Lock.Unlock()
 
+		u := mapValue.WechatUnionId
 		userInfo := UserInfo{
-			Id:          mapValue.WechatUnionId,
-			Username:    "wx_user_" + mapValue.WechatUnionId,
-			DisplayName: "wx_user_" + mapValue.WechatUnionId,
+			Id:          u,
+			Username:    oauthUsernamePreferLogin("", "", u, "", ""),
+			DisplayName: displayNameFromNickname("", "", "", "", u),
+			UnionId:     u,
 			AvatarUrl:   "",
 		}
 		return &userInfo, nil
@@ -225,19 +227,24 @@ func (idp *WeChatIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		return nil, err
 	}
 
-	id := wechatUserInfo.Unionid
-	if id == "" {
-		id = wechatUserInfo.Openid
+	openID := wechatUserInfo.Openid
+	if openID == "" {
+		if x := token.Extra("Openid"); x != nil {
+			if s, ok := x.(string); ok {
+				openID = s
+			}
+		}
 	}
-
+	idStr := oauthStableID("", wechatUserInfo.Unionid, openID, "", "")
 	extra := make(map[string]string)
-	extra["wechat_unionid"] = wechatUserInfo.Openid
+	extra["wechat_unionid"] = wechatUserInfo.Unionid
 	// For WeChat, different appId corresponds to different openId
-	extra[BuildWechatOpenIdKey(idp.Config.ClientID)] = wechatUserInfo.Openid
+	extra[BuildWechatOpenIdKey(idp.Config.ClientID)] = openID
 	userInfo := UserInfo{
-		Id:          id,
-		Username:    wechatUserInfo.Nickname,
-		DisplayName: wechatUserInfo.Nickname,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", "", wechatUserInfo.Unionid, openID, ""),
+		DisplayName: displayNameFromNickname(wechatUserInfo.Nickname, "", "", "", idStr),
+		UnionId:     wechatUserInfo.Unionid,
 		AvatarUrl:   wechatUserInfo.Headimgurl,
 		Extra:       extra,
 	}
