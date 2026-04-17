@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/beego/beego/v2/core/logs"
 	"github.com/casdoor/casdoor/idp"
 	"github.com/casdoor/casdoor/pp"
 	"github.com/casdoor/casdoor/util"
@@ -390,9 +391,8 @@ func PayOrder(providerName, host, paymentEnv string, order *Order, lang string) 
 
 		// Record coupon usage after successful balance payment
 		if order.CouponName != "" {
-			err = ApplyCoupon(order.Owner, order.CouponName, order.User, order.Name, order.CouponDiscount)
-			if err != nil {
-				return nil, nil, err
+			if err = ApplyCoupon(order.Owner, order.CouponName, order.User, order.Name, order.CouponDiscount); err != nil {
+				logs.Warning(fmt.Sprintf("PayOrder: failed to record coupon usage for order %s: %v", order.Name, err))
 			}
 		}
 	}

@@ -17,6 +17,7 @@ package object
 import (
 	"fmt"
 
+	"github.com/beego/beego/v2/core/logs"
 	"github.com/casdoor/casdoor/pp"
 	"github.com/casdoor/casdoor/util"
 	"github.com/xorm-io/core"
@@ -421,9 +422,8 @@ func NotifyPayment(body []byte, owner string, paymentName string, lang string) (
 
 		// Record coupon usage after successful external payment
 		if order.CouponName != "" {
-			err = ApplyCoupon(order.Owner, order.CouponName, order.User, order.Name, order.CouponDiscount)
-			if err != nil {
-				return nil, err
+			if err = ApplyCoupon(order.Owner, order.CouponName, order.User, order.Name, order.CouponDiscount); err != nil {
+				logs.Warning(fmt.Sprintf("NotifyPayment: failed to record coupon usage for order %s: %v", order.Name, err))
 			}
 		}
 	}
