@@ -47,13 +47,12 @@ jobs:
             });
             core.setOutput("exists", prs.data.length > 0 ? "true" : "false");
 
-      - name: Stop when an open sync PR exists
+      - name: Note existing open sync PR
         if: steps.check_pr.outputs.exists == 'true'
         run: |
-          echo "An open sync PR already exists. Skip to avoid overwriting your in-progress conflict resolution."
+          echo "An open sync PR already exists. Continue updating ${SYNC_BRANCH}, but do not create another PR."
 
       - name: Checkout repository
-        if: steps.check_pr.outputs.exists == 'false'
         uses: actions/checkout@v4
         with:
           # Required secret: UPSTREAM_SYNC_TOKEN (Classic PAT with repo + workflow scope)
@@ -62,7 +61,6 @@ jobs:
 
       - name: Prepare sync branch from upstream
         id: prepare
-        if: steps.check_pr.outputs.exists == 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -115,6 +113,10 @@ jobs:
 
             await github.rest.pulls.create({ owner, repo, title, head, base, body });
 
+      - name: Skip creating PR because one is already open
+        if: steps.check_pr.outputs.exists == 'true' && steps.prepare.outputs.ahead_count != '0' && steps.prepare.outputs.pushed == 'true'
+        run: echo "Updated sync branch, but skipped PR creation because an open sync PR already exists."
+
       - name: No upstream changes
-        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.skip_reason == 'no_changes'
+        if: steps.prepare.outputs.skip_reason == 'no_changes'
         run: echo "No new upstream commits to sync."
