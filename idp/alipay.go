@@ -84,6 +84,7 @@ type AlipaySystemOauthTokenResponse struct {
 	SubMsg       string `json:"sub_msg"`
 	AccessToken  string `json:"access_token"`
 	AlipayUserId string `json:"alipay_user_id"`
+	OpenId       string `json:"open_id"`
 	ExpiresIn    int    `json:"expires_in"`
 	ReExpiresIn  int    `json:"re_expires_in"`
 	RefreshToken string `json:"refresh_token"`
@@ -126,7 +127,12 @@ func (idp *AlipayIdProvider) GetToken(code string) (*oauth2.Token, error) {
 		AccessToken: pToken.Response.AccessToken,
 		Expiry:      time.Unix(time.Now().Unix()+int64(pToken.Response.ExpiresIn), 0),
 	}
-	return token, nil
+	ex := map[string]interface{}{
+		"alipay_token_user_id":        pToken.Response.UserId,
+		"alipay_token_alipay_user_id": pToken.Response.AlipayUserId,
+		"alipay_token_open_id":        pToken.Response.OpenId,
+	}
+	return token.WithExtra(ex), nil
 }
 
 /*
@@ -153,6 +159,7 @@ type AlipayUserInfoShareResponse struct {
 	Avatar   string `json:"avatar"`
 	NickName string `json:"nick_name"`
 	UserId   string `json:"user_id"`
+	OpenId   string `json:"open_id"`
 }
 
 // GetUserInfo Use access_token to get UserInfo
@@ -184,10 +191,28 @@ func (idp *AlipayIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		return nil, fmt.Errorf("alipay GetUserInfo error: code=%s, msg=%s", resp.Code, resp.Msg)
 	}
 
+	shareUID := strings.TrimSpace(resp.UserId)
+	shareOpenID := strings.TrimSpace(resp.OpenId)
+	tokUID := ""
+	tokOpenID := ""
+	tokAliUID := ""
+	if v, ok := token.Extra("alipay_token_user_id").(string); ok {
+		tokUID = strings.TrimSpace(v)
+	}
+	if v, ok := token.Extra("alipay_token_open_id").(string); ok {
+		tokOpenID = strings.TrimSpace(v)
+	}
+	if v, ok := token.Extra("alipay_token_alipay_user_id").(string); ok {
+		tokAliUID = strings.TrimSpace(v)
+	}
+	// user_id first; then open_id (userinfo > token); alipay_user_id last as legacy fallback when open_id absent
+	userid := stableIDChain(shareUID, tokUID)
+	openID := stableIDChain(shareOpenID, tokOpenID, tokAliUID)
+	idStr := oauthStableID(userid, "", openID, "", "")
 	userInfo := UserInfo{
-		Id:          resp.UserId,
-		Username:    resp.NickName,
-		DisplayName: resp.NickName,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", userid, "", openID, ""),
+		DisplayName: displayNameFromNickname(resp.NickName, "", "", "", idStr),
 		AvatarUrl:   resp.Avatar,
 	}
 
