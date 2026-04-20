@@ -40,6 +40,10 @@ func InitApi() {
 		ruleText := `
 p, built-in, *, *, *, *, *
 p, app, *, *, *, *, *
+p, app-dcr, *, *, /api/login/oauth/*, *, *
+p, app-dcr, *, *, /api/get-oauth-token, *, *
+p, app-dcr, *, *, /api/userinfo, *, *
+p, app-dcr, *, *, /api/get-application, *, *
 p, *, *, POST, /api/signup, *, *
 p, *, *, GET, /api/get-email-and-phone, *, *
 p, *, *, POST, /api/login, *, *
@@ -76,7 +80,6 @@ p, *, *, GET, /api/get-order, *, *
 p, *, *, GET, /api/get-orders, *, *
 p, *, *, GET, /api/get-user-orders, *, *
 p, *, *, GET, /api/get-payment, *, *
-p, *, *, POST, /api/update-payment, *, *
 p, *, *, POST, /api/invoice-payment, *, *
 p, *, *, POST, /api/notify-payment, *, *
 p, *, *, POST, /api/place-order, *, *
