@@ -23,22 +23,19 @@ import (
 	"github.com/casdoor/casdoor/scan"
 )
 
-// SyncIntranetServers
-// @Title SyncIntranetServers
-// @Tag Server API
-// @Description scan intranet IP/CIDR targets and detect MCP servers by probing common ports and paths
+// Scan
+// @Title Scan
+// @Tag Scan API
+// @Description run scan provider (type=Security Scan), persist result to provider metadata, and return parsed result
 // @Param   owner   query  string  true  "The provider owner"
 // @Param   name    query  string  true  "The provider name"
+// @Param   target  query  string  false "Optional scan target"
 // @Success 200 {object} controllers.Response The Response object
-// @router /sync-intranet-servers [post]
-func (c *ApiController) SyncIntranetServers() {
-	_, ok := c.RequireAdmin()
-	if !ok {
-		return
-	}
-
+// @router /scan [get]
+func (c *ApiController) Scan() {
 	owner := strings.TrimSpace(c.GetString("owner"))
 	name := strings.TrimSpace(c.GetString("name"))
+	target := strings.TrimSpace(c.GetString("target"))
 	if owner == "" || name == "" {
 		c.ResponseError("provider owner and name are required")
 		return
@@ -55,44 +52,50 @@ func (c *ApiController) SyncIntranetServers() {
 		return
 	}
 
-	provider, err := scan.GetScanProviderFromProvider(configuredProvider)
+	if !c.requireProviderPermission(configuredProvider) {
+		return
+	}
+
+	if configuredProvider.Category != "Scan" || configuredProvider.Type != "Security Scan" {
+		c.ResponseError("provider type Security Scan is required")
+		return
+	}
+
+	if strings.EqualFold(configuredProvider.SubType, "Url") && target == "" && strings.TrimSpace(configuredProvider.Content) == "" {
+		c.ResponseError("target URL is required for Url scan")
+		return
+	}
+
+	scanProvider, err := scan.GetScanProviderFromProvider(configuredProvider)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	commandBytes, err := json.Marshal(&scan.SyncInnerServersRequest{
-		CIDR:  strings.Split(configuredProvider.Scopes, ","),
-		Ports: strings.Split(configuredProvider.Content, ","),
-		Paths: strings.Split(configuredProvider.Endpoint, ","),
-	})
+	rawResult, err := scanProvider.Scan(target, "")
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	rawResult, err := provider.Scan("", string(commandBytes))
+	parsedResult, err := scanProvider.ParseResult(rawResult)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	parsedResult, err := provider.ParseResult(rawResult)
+	configuredProvider.Metadata = parsedResult
+	_, err = object.UpdateProvider(configuredProvider.GetId(), configuredProvider)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	var intranetResult scan.SyncInnerServersResult
-	if err := json.Unmarshal([]byte(parsedResult), &intranetResult); err != nil {
+	var result interface{}
+	if err := json.Unmarshal([]byte(parsedResult), &result); err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	c.ResponseOk(&scan.SyncInnerServersResult{
-		CIDR:         intranetResult.CIDR,
-		ScannedHosts: intranetResult.ScannedHosts,
-		OnlineHosts:  intranetResult.OnlineHosts,
-		Servers:      intranetResult.Servers,
-	})
+	c.ResponseOk(result)
 }
