@@ -207,21 +207,21 @@ function ManagementPage(props) {
   }
 
   function renderAvatar() {
-    if (props.account.avatar === "") {
+    const avatarUrl = Setting.getEffectiveAvatarUrl(props.account);
+    if (!avatarUrl) {
       return (
-        <Avatar style={{backgroundColor: Setting.getAvatarColor(props.account.name), verticalAlign: "middle", marginLeft: 8}} size="large">
-          {Setting.getShortName(props.account.name)}
-        </Avatar>
-      );
-    } else {
-      return (
-        <Avatar src={props.account.avatar} style={{verticalAlign: "middle", marginLeft: 8}} size="large"
-          icon={<AccountAvatar src={props.account.avatar} style={{verticalAlign: "middle"}} size={40} />}
-        >
-          {Setting.getShortName(props.account.name)}
-        </Avatar>
+        <div style={{verticalAlign: "middle", marginLeft: 8, display: "inline-flex"}}>
+          {Setting.getAvatarPlaceholder(props.account.name, 40)}
+        </div>
       );
     }
+    return (
+      <Avatar src={avatarUrl} style={{verticalAlign: "middle", marginLeft: 8}} size="large"
+        icon={<AccountAvatar src={avatarUrl} style={{verticalAlign: "middle"}} size={40} />}
+      >
+        {Setting.getShortName(props.account.name)}
+      </Avatar>
+    );
   }
 
   function renderRightDropdown() {

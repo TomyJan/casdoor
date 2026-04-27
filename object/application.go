@@ -92,6 +92,7 @@ type Application struct {
 	Cert                         string          `xorm:"varchar(100)" json:"cert"`
 	DefaultGroup                 string          `xorm:"varchar(100)" json:"defaultGroup"`
 	HeaderHtml                   string          `xorm:"mediumtext" json:"headerHtml"`
+	PageHtml                     string          `xorm:"mediumtext" json:"pageHtml"`
 	EnablePassword               bool            `json:"enablePassword"`
 	EnableSignUp                 bool            `json:"enableSignUp"`
 	EnableGuestSignin            bool            `json:"enableGuestSignin"`
@@ -120,6 +121,7 @@ type Application struct {
 	Tags                         []string        `xorm:"mediumtext" json:"tags"`
 	SamlAttributes               []*SamlItem     `xorm:"varchar(1000)" json:"samlAttributes"`
 	SamlHashAlgorithm            string          `xorm:"varchar(20)" json:"samlHashAlgorithm"`
+	SamlC14nPrefix               string          `xorm:"varchar(100)" json:"samlC14nPrefix"`
 	IsShared                     bool            `json:"isShared"`
 	IpRestriction                string          `json:"ipRestriction"`
 
@@ -321,12 +323,10 @@ func GetApplicationByUser(user *User) (*Application, error) {
 }
 
 func GetApplicationByUserId(userId string) (application *Application, err error) {
-	_, name, err := util.GetOwnerAndNameFromIdWithError(userId)
-	if err != nil {
-		return nil, err
-	}
 	if IsAppUser(userId) {
-		application, err = getApplication("admin", name)
+		// App owner in the DB is always "admin"; org is stored in Application.Organization.
+		_, appName := ParseAppUserId(userId)
+		application, err = getApplication("admin", appName)
 		return
 	}
 

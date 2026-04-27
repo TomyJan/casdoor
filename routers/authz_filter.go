@@ -112,10 +112,14 @@ func getSubject(ctx *context.Context) (string, string) {
 		return "anonymous", "anonymous"
 	}
 
-	// username == "built-in/admin"
-	owner, name, err := util.GetOwnerAndNameFromIdWithError(username)
+	ownerType, owner, name, err := util.ParseUserId(username)
 	if err != nil {
 		panic(err)
+	}
+	if ownerType != "" {
+		// Typed identity (e.g. "app/casbin/app-casibase"): keep ownerType as
+		// subOwner so IsAllowed can detect the identity type.
+		return ownerType, owner + "/" + name
 	}
 	return owner, name
 }
@@ -347,7 +351,11 @@ func ApiFilter(ctx *context.Context) {
 		urlPath = "/api/notify-payment"
 	}
 
-	isAllowed := authz.IsAllowed(subOwner, subName, method, urlPath, objOwner, objName, extraInfo)
+	isAllowed, err := authz.IsAllowed(subOwner, subName, method, urlPath, objOwner, objName, extraInfo)
+	if err != nil {
+		responseError(ctx, err.Error())
+		return
+	}
 
 	if method != "GET" && !strings.HasSuffix(urlPath, "-entry") {
 		util.SafeGoroutine(func() {
