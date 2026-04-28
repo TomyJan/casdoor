@@ -27,7 +27,7 @@ function CustomHead(props) {
       node.innerHTML = props.headerHtml;
 
       node.childNodes.forEach(el => {
-        if (el.nodeName === "#text") {
+        if (el.nodeType !== Node.ELEMENT_NODE) {
           return;
         }
         let innerNode = el;
