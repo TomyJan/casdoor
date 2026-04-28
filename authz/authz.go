@@ -21,10 +21,125 @@ import (
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
-	stringadapter "github.com/qiangmzsx/string-adapter/v2"
 )
 
 var Enforcer *casbin.Enforcer
+
+// defaultApiRules lists the Casbin policy rules that Casdoor requires to function.
+// Rules are applied additively: rules already present in the database are left
+// untouched, so operator customisations survive restarts and version upgrades
+// still pick up any newly added entries here.
+//
+// NOTE: the former "p, app, *, *, *, *, *" wildcard is intentionally absent.
+// Per-organisation scoping for application credentials is enforced in IsAllowed,
+// so that Casbin rule was both redundant and dangerously misleading.
+var defaultApiRules = [][]string{
+	{"built-in", "*", "*", "*", "*", "*"},
+	{"app-dcr", "*", "*", "/api/login/oauth/*", "*", "*"},
+	{"app-dcr", "*", "*", "/api/get-oauth-token", "*", "*"},
+	{"app-dcr", "*", "*", "/api/userinfo", "*", "*"},
+	{"app-dcr", "*", "*", "/api/get-application", "*", "*"},
+	{"*", "*", "POST", "/api/signup", "*", "*"},
+	{"*", "*", "GET", "/api/get-email-and-phone", "*", "*"},
+	{"*", "*", "POST", "/api/login", "*", "*"},
+	{"*", "*", "GET", "/api/get-app-login", "*", "*"},
+	{"*", "*", "POST", "/api/logout", "*", "*"},
+	{"*", "*", "GET", "/api/logout", "*", "*"},
+	{"*", "*", "POST", "/api/sso-logout", "*", "*"},
+	{"*", "*", "GET", "/api/sso-logout", "*", "*"},
+	{"*", "*", "POST", "/api/callback", "*", "*"},
+	{"*", "*", "POST", "/api/device-auth", "*", "*"},
+	{"*", "*", "POST", "/api/cancel-device-auth", "*", "*"},
+	{"*", "*", "POST", "/api/device-auth-complete", "*", "*"},
+	{"*", "*", "POST", "/api/native-sso-complete", "*", "*"},
+	{"*", "*", "GET", "/api/get-account", "*", "*"},
+	{"*", "*", "GET", "/api/userinfo", "*", "*"},
+	{"*", "*", "GET", "/api/user", "*", "*"},
+	{"*", "*", "GET", "/api/health", "*", "*"},
+	{"*", "*", "*", "/api/webhook", "*", "*"},
+	{"*", "*", "GET", "/api/get-qrcode", "*", "*"},
+	{"*", "*", "GET", "/api/get-webhook-event", "*", "*"},
+	{"*", "*", "GET", "/api/get-captcha-status", "*", "*"},
+	{"*", "*", "*", "/api/login/oauth", "*", "*"},
+	{"*", "*", "POST", "/api/oauth/register", "*", "*"},
+	{"*", "*", "GET", "/api/get-application", "*", "*"},
+	{"*", "*", "GET", "/api/get-organization-applications", "*", "*"},
+	{"*", "*", "GET", "/api/get-user", "*", "*"},
+	{"*", "*", "GET", "/api/get-user-application", "*", "*"},
+	{"*", "*", "POST", "/api/upload-users", "*", "*"},
+	{"*", "*", "GET", "/api/get-resources", "*", "*"},
+	{"*", "*", "GET", "/api/get-records", "*", "*"},
+	{"*", "*", "GET", "/api/get-product", "*", "*"},
+	{"*", "*", "GET", "/api/get-products", "*", "*"},
+	{"*", "*", "POST", "/api/buy-product", "*", "*"},
+	{"*", "*", "GET", "/api/get-order", "*", "*"},
+	{"*", "*", "GET", "/api/get-orders", "*", "*"},
+	{"*", "*", "GET", "/api/get-user-orders", "*", "*"},
+	{"*", "*", "GET", "/api/get-payment", "*", "*"},
+	{"*", "*", "POST", "/api/invoice-payment", "*", "*"},
+	{"*", "*", "POST", "/api/notify-payment", "*", "*"},
+	{"*", "*", "POST", "/api/place-order", "*", "*"},
+	{"*", "*", "POST", "/api/cancel-order", "*", "*"},
+	{"*", "*", "POST", "/api/pay-order", "*", "*"},
+	{"*", "*", "POST", "/api/validate-coupon", "*", "*"},
+	{"*", "*", "POST", "/api/unlink", "*", "*"},
+	{"*", "*", "POST", "/api/set-password", "*", "*"},
+	{"*", "*", "POST", "/api/send-verification-code", "*", "*"},
+	{"*", "*", "GET", "/api/get-captcha", "*", "*"},
+	{"*", "*", "POST", "/api/verify-captcha", "*", "*"},
+	{"*", "*", "POST", "/api/verify-code", "*", "*"},
+	{"*", "*", "POST", "/api/v1/traces", "*", "*"},
+	{"*", "*", "POST", "/api/v1/metrics", "*", "*"},
+	{"*", "*", "POST", "/api/v1/logs", "*", "*"},
+	{"*", "*", "POST", "/api/reset-email-or-phone", "*", "*"},
+	{"*", "*", "POST", "/api/upload-resource", "*", "*"},
+	{"*", "*", "GET", "/.well-known/openid-configuration", "*", "*"},
+	{"*", "*", "GET", "/.well-known/oauth-authorization-server", "*", "*"},
+	{"*", "*", "GET", "/.well-known/oauth-protected-resource", "*", "*"},
+	{"*", "*", "GET", "/.well-known/webfinger", "*", "*"},
+	{"*", "*", "*", "/.well-known/jwks", "*", "*"},
+	{"*", "*", "GET", "/.well-known/:application/openid-configuration", "*", "*"},
+	{"*", "*", "GET", "/.well-known/:application/oauth-authorization-server", "*", "*"},
+	{"*", "*", "GET", "/.well-known/:application/oauth-protected-resource", "*", "*"},
+	{"*", "*", "GET", "/.well-known/:application/webfinger", "*", "*"},
+	{"*", "*", "*", "/.well-known/:application/jwks", "*", "*"},
+	{"*", "*", "GET", "/api/get-saml-login", "*", "*"},
+	{"*", "*", "POST", "/api/acs", "*", "*"},
+	{"*", "*", "GET", "/api/saml/metadata", "*", "*"},
+	{"*", "*", "*", "/api/saml/redirect", "*", "*"},
+	{"*", "*", "*", "/cas", "*", "*"},
+	{"*", "*", "*", "/scim", "*", "*"},
+	{"*", "*", "*", "/api/webauthn", "*", "*"},
+	{"*", "*", "GET", "/api/get-release", "*", "*"},
+	{"*", "*", "GET", "/api/get-default-application", "*", "*"},
+	{"*", "*", "GET", "/api/get-prometheus-info", "*", "*"},
+	{"*", "*", "*", "/api/metrics", "*", "*"},
+	{"*", "*", "GET", "/api/get-pricing", "*", "*"},
+	{"*", "*", "GET", "/api/get-plan", "*", "*"},
+	{"*", "*", "GET", "/api/get-subscription", "*", "*"},
+	{"*", "*", "GET", "/api/get-transactions", "*", "*"},
+	{"*", "*", "GET", "/api/get-transaction", "*", "*"},
+	{"*", "*", "GET", "/api/get-provider", "*", "*"},
+	{"*", "*", "GET", "/api/get-organization-names", "*", "*"},
+	{"*", "*", "GET", "/api/get-organizations", "*", "*"},
+	{"*", "*", "GET", "/api/get-all-objects", "*", "*"},
+	{"*", "*", "GET", "/api/get-all-actions", "*", "*"},
+	{"*", "*", "GET", "/api/get-all-roles", "*", "*"},
+	{"*", "*", "GET", "/api/run-casbin-command", "*", "*"},
+	{"*", "*", "POST", "/api/refresh-engines", "*", "*"},
+	{"*", "*", "GET", "/api/get-invitation-info", "*", "*"},
+	{"*", "*", "GET", "/api/faceid-signin-begin", "*", "*"},
+	{"*", "*", "GET", "/api/kerberos-login", "*", "*"},
+}
+
+// obsoleteApiRules lists rules that must be removed from the database if present.
+// These were previously seeded as defaults but are now either replaced by
+// code-level enforcement or were incorrectly over-permissive.
+var obsoleteApiRules = [][]string{
+	// Superseded by org-scoped enforcement in IsAllowed; keeping this in the
+	// DB gives a false impression that app credentials are unrestricted.
+	{"app", "*", "*", "*", "*", "*"},
+}
 
 func InitApi() {
 	e, err := object.GetInitializedEnforcer(util.GetId("built-in", "api-enforcer-built-in"))
@@ -33,124 +148,43 @@ func InitApi() {
 	}
 
 	Enforcer = e.Enforcer
-	Enforcer.ClearPolicy()
+	// GetInitializedEnforcer already loaded rules from the DB into memory.
+	// We use an additive strategy: only insert rules that are not yet present,
+	// so that operator customisations survive restarts and new default rules
+	// introduced in upgrades are still picked up automatically.
 
-	// if len(Enforcer.GetPolicy()) == 0 {
-	if true {
-		ruleText := `
-p, built-in, *, *, *, *, *
-p, app, *, *, *, *, *
-p, app-dcr, *, *, /api/login/oauth/*, *, *
-p, app-dcr, *, *, /api/get-oauth-token, *, *
-p, app-dcr, *, *, /api/userinfo, *, *
-p, app-dcr, *, *, /api/get-application, *, *
-p, *, *, POST, /api/signup, *, *
-p, *, *, GET, /api/get-email-and-phone, *, *
-p, *, *, POST, /api/login, *, *
-p, *, *, GET, /api/get-app-login, *, *
-p, *, *, POST, /api/logout, *, *
-p, *, *, GET, /api/logout, *, *
-p, *, *, POST, /api/sso-logout, *, *
-p, *, *, GET, /api/sso-logout, *, *
-p, *, *, POST, /api/callback, *, *
-p, *, *, POST, /api/device-auth, *, *
-p, *, *, POST, /api/cancel-device-auth, *, *
-p, *, *, POST, /api/device-auth-complete, *, *
-p, *, *, POST, /api/native-sso-complete, *, *
-p, *, *, GET, /api/get-account, *, *
-p, *, *, GET, /api/userinfo, *, *
-p, *, *, GET, /api/user, *, *
-p, *, *, GET, /api/health, *, *
-p, *, *, *, /api/webhook, *, *
-p, *, *, GET, /api/get-qrcode, *, *
-p, *, *, GET, /api/get-webhook-event, *, *
-p, *, *, GET, /api/get-captcha-status, *, *
-p, *, *, *, /api/login/oauth, *, *
-p, *, *, POST, /api/oauth/register, *, *
-p, *, *, GET, /api/get-application, *, *
-p, *, *, GET, /api/get-organization-applications, *, *
-p, *, *, GET, /api/get-user, *, *
-p, *, *, GET, /api/get-user-application, *, *
-p, *, *, POST, /api/upload-users, *, *
-p, *, *, GET, /api/get-resources, *, *
-p, *, *, GET, /api/get-records, *, *
-p, *, *, GET, /api/get-product, *, *
-p, *, *, GET, /api/get-products, *, *
-p, *, *, POST, /api/buy-product, *, *
-p, *, *, GET, /api/get-order, *, *
-p, *, *, GET, /api/get-orders, *, *
-p, *, *, GET, /api/get-user-orders, *, *
-p, *, *, GET, /api/get-payment, *, *
-p, *, *, POST, /api/invoice-payment, *, *
-p, *, *, POST, /api/notify-payment, *, *
-p, *, *, POST, /api/place-order, *, *
-p, *, *, POST, /api/cancel-order, *, *
-p, *, *, POST, /api/pay-order, *, *
-p, *, *, POST, /api/validate-coupon, *, *
-p, *, *, POST, /api/unlink, *, *
-p, *, *, POST, /api/set-password, *, *
-p, *, *, POST, /api/send-verification-code, *, *
-p, *, *, GET, /api/get-captcha, *, *
-p, *, *, POST, /api/verify-captcha, *, *
-p, *, *, POST, /api/verify-code, *, *
-p, *, *, POST, /api/v1/traces, *, *
-p, *, *, POST, /api/v1/metrics, *, *
-p, *, *, POST, /api/v1/logs, *, *
-p, *, *, POST, /api/reset-email-or-phone, *, *
-p, *, *, POST, /api/upload-resource, *, *
-p, *, *, GET, /.well-known/openid-configuration, *, *
-p, *, *, GET, /.well-known/oauth-authorization-server, *, *
-p, *, *, GET, /.well-known/oauth-protected-resource, *, *
-p, *, *, GET, /.well-known/webfinger, *, *
-p, *, *, *, /.well-known/jwks, *, *
-p, *, *, GET, /.well-known/:application/openid-configuration, *, *
-p, *, *, GET, /.well-known/:application/oauth-authorization-server, *, *
-p, *, *, GET, /.well-known/:application/oauth-protected-resource, *, *
-p, *, *, GET, /.well-known/:application/webfinger, *, *
-p, *, *, *, /.well-known/:application/jwks, *, *
-p, *, *, GET, /api/get-saml-login, *, *
-p, *, *, POST, /api/acs, *, *
-p, *, *, GET, /api/saml/metadata, *, *
-p, *, *, *, /api/saml/redirect, *, *
-p, *, *, *, /cas, *, *
-p, *, *, *, /scim, *, *
-p, *, *, *, /api/webauthn, *, *
-p, *, *, GET, /api/get-release, *, *
-p, *, *, GET, /api/get-default-application, *, *
-p, *, *, GET, /api/get-prometheus-info, *, *
-p, *, *, *, /api/metrics, *, *
-p, *, *, GET, /api/get-pricing, *, *
-p, *, *, GET, /api/get-plan, *, *
-p, *, *, GET, /api/get-subscription, *, *
-p, *, *, GET, /api/get-transactions, *, *
-p, *, *, GET, /api/get-transaction, *, *
-p, *, *, GET, /api/get-provider, *, *
-p, *, *, GET, /api/get-organization-names, *, *
-p, *, *, GET, /api/get-organizations, *, *
-p, *, *, GET, /api/get-all-objects, *, *
-p, *, *, GET, /api/get-all-actions, *, *
-p, *, *, GET, /api/get-all-roles, *, *
-p, *, *, GET, /api/run-casbin-command, *, *
-p, *, *, POST, /api/refresh-engines, *, *
-p, *, *, GET, /api/get-invitation-info, *, *
-p, *, *, GET, /api/faceid-signin-begin, *, *
-p, *, *, GET, /api/kerberos-login, *, *
-`
+	// 1. Remove rules that have been superseded or were incorrectly permissive.
+	for _, rule := range obsoleteApiRules {
+		params := make([]interface{}, len(rule))
+		for i, v := range rule {
+			params[i] = v
+		}
+		if Enforcer.HasPolicy(params...) {
+			if _, err = Enforcer.RemovePolicy(params...); err != nil {
+				panic(err)
+			}
+		}
+	}
 
-		sa := stringadapter.NewAdapter(ruleText)
-		// load all rules from string adapter to enforcer's memory
-		err = sa.LoadPolicy(Enforcer.GetModel())
-		if err != nil {
+	// 2. Add any default rules that are missing from the DB.
+	var missing [][]string
+	for _, rule := range defaultApiRules {
+		params := make([]interface{}, len(rule))
+		for i, v := range rule {
+			params[i] = v
+		}
+		if !Enforcer.HasPolicy(params...) {
+			missing = append(missing, rule)
+		}
+	}
+	if len(missing) > 0 {
+		if _, err = Enforcer.AddPolicies(missing); err != nil {
 			panic(err)
 		}
+	}
 
-		// save all rules from enforcer's memory to Xorm adapter (DB)
-		// same as:
-		// a.SavePolicy(Enforcer.GetModel())
-		err = Enforcer.SavePolicy()
-		if err != nil {
-			panic(err)
-		}
+	if err = Enforcer.SavePolicy(); err != nil {
+		panic(err)
 	}
 }
 
