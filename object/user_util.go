@@ -970,7 +970,7 @@ func (user *User) IsAdminUser() bool {
 }
 
 func IsAppUser(userId string) bool {
-	if strings.HasPrefix(userId, "app/") {
+	if strings.HasPrefix(userId, "app/") || strings.HasPrefix(userId, "app-dcr/") {
 		return true
 	}
 	return false
@@ -1011,6 +1011,19 @@ func setReflectAttr[T any](fieldValue *reflect.Value, fieldString string) error 
 	return nil
 }
 
+func setEmptyReflectAttr(fieldValue *reflect.Value) bool {
+	switch fieldValue.Kind() {
+	case reflect.Slice:
+		fieldValue.Set(reflect.MakeSlice(fieldValue.Type(), 0, 0))
+	case reflect.Map:
+		fieldValue.Set(reflect.MakeMap(fieldValue.Type()))
+	default:
+		return false
+	}
+
+	return true
+}
+
 func StringArrayToStruct[T any](stringArray [][]string) ([]*T, error) {
 	fieldNames := stringArray[0]
 	excelMap := []map[string]string{}
@@ -1041,9 +1054,6 @@ func StringArrayToStruct[T any](stringArray [][]string) ([]*T, error) {
 		reflectedInstance := reflect.ValueOf(instance).Elem()
 
 		for k, v := range m {
-			if v == "" || v == "null" || v == "[]" || v == "{}" {
-				continue
-			}
 			fName := strings.ToLower(strings.ReplaceAll(k, "_", ""))
 			fieldIdx, ok := structFieldMap[fName]
 			if !ok {
@@ -1051,6 +1061,10 @@ func StringArrayToStruct[T any](stringArray [][]string) ([]*T, error) {
 			}
 			fv := reflectedInstance.Field(fieldIdx)
 			if !fv.IsValid() {
+				continue
+			}
+			if v == "" || v == "null" || v == "[]" || v == "{}" {
+				setEmptyReflectAttr(&fv)
 				continue
 			}
 			switch fv.Kind() {
