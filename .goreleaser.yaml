@@ -45,7 +45,7 @@ archives:
       - src: 'web/build'
         dst: './web/build'
       - src: 'conf/app.conf'
-        dst: './conf/app.conf'
+        dst: './conf/app.conf.tmpl'
 
 changelog:
   sort: asc
