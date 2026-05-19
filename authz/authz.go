@@ -130,6 +130,8 @@ var defaultApiRules = [][]string{
 	{"*", "*", "GET", "/api/get-invitation-info", "*", "*"},
 	{"*", "*", "GET", "/api/faceid-signin-begin", "*", "*"},
 	{"*", "*", "GET", "/api/kerberos-login", "*", "*"},
+	{"*", "*", "POST", "/api/grant-consent", "*", "*"},
+	{"*", "*", "POST", "/api/revoke-consent", "*", "*"},
 }
 
 // obsoleteApiRules lists rules that must be removed from the database if present.
