@@ -148,7 +148,7 @@ func getUsernameByClientIdSecret(ctx *context.Context) (string, error) {
 			return fmt.Sprintf("app-dcr/%s", application.Name), nil
 		}
 	}
-	return fmt.Sprintf("app/%s", application.Name), nil
+	return fmt.Sprintf("app/%s/%s", application.Organization, application.Name), nil
 }
 
 func getUsernameByAccessKey(ctx *context.Context) (string, error) {

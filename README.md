@@ -1,328 +1,160 @@
-<div align="center">
-  <a href="https://casdoor.ai">
-    <img src="https://cdn.casbin.org/img/casdoor-logo_1185x256.png" alt="Casdoor" width="500">
-  </a>
+# Casdoor
 
-  <h3>Casdoor: AI-First Identity and Access Management (IAM) / AI MCP Gateway</h3>
+开源身份与访问管理（IAM）服务，完善的 Web 管理界面，支持 OAuth/OIDC、SAML、LDAP 等多种协议。
 
-  <p align="center">
-    <strong>An open-source, AI-first IAM / MCP gateway and authentication server with a web UI.</strong><br>
-    Supporting MCP, A2A, OAuth&nbsp;2.0, OIDC (OAuth&nbsp;2.x), SAML, CAS, LDAP, SCIM, WebAuthn, TOTP, MFA, Face ID,<br>
-    Google Workspace, Azure AD, and more.
-  </p>
-
-  <p align="center">
-    <a href="https://casdoor.ai/"><strong>Documentation and guides: casdoor.ai</strong></a>
-  </p>
-
-  <p>
-    <a href="https://casdoor.ai/docs/overview">
-      <img src="https://img.shields.io/badge/documentation-casdoor.ai%2Fdocs-1890ff?style=flat-square&logo=readthedocs&logoColor=white" alt="Documentation">
-    </a>
-    <a href="https://github.com/casdoor/casdoor/releases/latest">
-      <img src="https://img.shields.io/github/v/release/casdoor/casdoor?style=flat-square&color=blue" alt="GitHub Release">
-    </a>
-    <a href="https://hub.docker.com/r/casbin/casdoor">
-      <img src="https://img.shields.io/docker/pulls/casbin/casdoor?style=flat-square&color=brightgreen" alt="Docker Pulls">
-    </a>
-    <a href="https://github.com/casdoor/casdoor/actions/workflows/build.yml">
-      <img src="https://img.shields.io/github/actions/workflow/status/casdoor/casdoor/build.yml?style=flat-square&label=build" alt="Build Status">
-    </a>
-    <a href="https://goreportcard.com/report/github.com/casdoor/casdoor">
-      <img src="https://goreportcard.com/badge/github.com/casdoor/casdoor?style=flat-square" alt="Go Report Card">
-    </a>
-    <a href="https://github.com/casdoor/casdoor/blob/master/LICENSE">
-      <img src="https://img.shields.io/github/license/casdoor/casdoor?style=flat-square&color=orange" alt="License">
-    </a>
-  </p>
-
-  <p>
-    <a href="https://github.com/casdoor/casdoor/stargazers">
-      <img src="https://img.shields.io/github/stars/casdoor/casdoor?style=flat-square&color=yellow" alt="GitHub Stars">
-    </a>
-    <a href="https://github.com/casdoor/casdoor/network/members">
-      <img src="https://img.shields.io/github/forks/casdoor/casdoor?style=flat-square" alt="GitHub Forks">
-    </a>
-    <a href="https://github.com/casdoor/casdoor/issues">
-      <img src="https://img.shields.io/github/issues/casdoor/casdoor?style=flat-square&color=red" alt="GitHub Issues">
-    </a>
-    <a href="https://discord.gg/5rPsrAzK7S">
-      <img src="https://img.shields.io/discord/1022748306096537660?style=flat-square&logo=discord&label=Discord&color=5865F2" alt="Discord">
-    </a>
-    <a href="https://crowdin.com/project/casdoor-site">
-      <img src="https://badges.crowdin.net/casdoor-site/localized.svg" alt="Crowdin">
-    </a>
-  </p>
-
-  <p align="center">
-    <a href="https://casdoor.ai"><strong>Website</strong></a> ·
-    <a href="https://casdoor.ai/docs/overview"><strong>Documentation</strong></a> ·
-    <a href="https://door.casdoor.com"><strong>Live demo</strong></a> ·
-    <a href="https://discord.gg/5rPsrAzK7S"><strong>Discord</strong></a>
-  </p>
-</div>
+自用修改版，更改了一些逆天之处。不定时与官方版同步。
 
 ---
 
-## Table of contents
+把 [我的 PR](https://github.com/casdoor/casdoor/pull/4974) 关掉再 [自己交一个 PR](https://github.com/casdoor/casdoor/pull/5119) 是何意味?
 
-- [Why Casdoor](#why-casdoor)
-- [Live demos](#live-demos)
-- [Quick start](#quick-start)
-- [Features](#features)
-- [Technology stack](#technology-stack)
-- [Documentation](#documentation)
-- [Integrations](#integrations)
-- [Security](#security)
-- [Community and support](#community-and-support)
-- [Contributing](#contributing)
-- [Donate](#donate)
-- [License](#license)
+[用昵称当用户名](https://github.com/casdoor/casdoor/pull/4975) , 还有我懒得说的其他平台明明给了用户 UID 还要用用户名当 ID 何意味?
+
+当个 Contributor 以为自己是 CN 体制内领导吗?
 
 ---
 
-<a id="why-casdoor"></a>
-## Why Casdoor
+## 与官方版主要区别
 
-Casdoor is a **UI-first** identity provider and access management platform: one place to manage users, organizations, applications, and providers, with a modern web console. Authorization policies can be expressed with **[Casbin](https://casbin.org/)** (ACL, RBAC, ABAC, and more). Unlike reverse-proxy-centric auth companions, Casdoor is a dedicated auth server with broad protocol support, designed to be straightforward to self-host and integrate—see **[casdoor.ai](https://casdoor.ai)** for documentation.
+1. OAuth 绑定, 尽可能优先使用靠谱的键（如 GitHub 的 `id`，而非 `username`），不使用逆天的绑定关系（如 QQ 使用 昵称）。此更改不会迁移已有绑定，如果你从官方版迁移而来，请自行处理。
+2. 构建产物中的默认配置文件改为 `~.tmpl`，且配置文件需要更新时仅报错退出不主动覆盖用户的实际配置。
 
----
-
-<a id="live-demos"></a>
-## 🌐 Live demos
-
-| Environment | URL | Description |
-|-------------|-----|-------------|
-| **Read-only** | [door.casdoor.com](https://door.casdoor.com) | Global demo; **any modification or write operation will fail** (read-only). |
-| **Writable** | [demo.casdoor.com](https://demo.casdoor.com) | Full access for testing; **data is reset about every 5 minutes**. |
-
-Default demo admin login (where applicable): `admin` / `123` — use only for demos; change credentials on your own deployment.
+注意: 支付宝 OAuth 提供商当前版本需要使用密钥模式, 私钥填写到 `客户端密钥` , 证书不用选择, 那是官方版傻逼瞎修的
 
 ---
 
-<a id="quick-start"></a>
-## 🚀 Quick start
+下文是**快速上手**；完整安装、配置、高可用与集成说明请以官方文档为准。
 
-Pick one deployment method below. To keep behavior consistent with upstream, the steps are aligned with official docs.
+---
 
-### 🛠️ Source code (default)
+## 本地开发
 
-1. Install dependencies: **Go 1.25** (follow `go.mod`), **Node.js LTS (20)**, **Yarn 1.x**, and a supported database.
-2. Clone the repository:
+### 环境要求
+
+| 组件 | 说明 |
+|------|------|
+| Go | 与 `go.mod` 中版本一致（当前为 Go 1.25 系） |
+| Node.js | 建议 LTS（如 20.x），用于前端 |
+| Yarn | 前端包管理（勿用 npm 安装，见 `web/package.json`） |
+| MySQL | 默认使用 MySQL，连接串见 `conf/app.conf` |
+
+### 安装依赖
+
+在项目根目录：
 
 ```bash
-git clone https://github.com/casdoor/casdoor.git
-cd casdoor
+go mod download
 ```
-
-3. Configure database in `conf/app.conf` (at minimum set `driverName`, `dataSourceName`, and `dbName`; for MySQL create database `casdoor` first).
-4. Build frontend and start backend:
 
 ```bash
 cd web
-yarn install
-yarn build
-cd ..
-go run main.go
+yarn
 ```
 
-5. Open [http://localhost:8000](http://localhost:8000) and sign in with `built-in/admin` / `123` on a fresh install (change password immediately in production).
+### 准备数据库
 
-Official guide: [Server installation](https://casdoor.ai/docs/basic/server-installation)
+按 `conf/app.conf` 中的 `dataSourceName`、`dbName` 创建数据库与用户（默认示例为本地 MySQL、`casdoor` 库）。若账号密码与配置文件不一致，请修改 `conf/app.conf` 后再启动。
 
-### 🐳 Docker
+### 运行
 
-Use one of the official Docker paths:
+需要**两个终端**：
 
-- **All-in-one (SQLite quick trial)**:
+1. **后端**（默认监听 `8000`）：
+
+   ```bash
+   go run ./main.go
+   ```
+
+2. **前端开发服务器**（默认 `7001`，并将 API 代理到本机 `8000`）：
+
+   ```bash
+   cd web
+   yarn start
+   ```
+
+浏览器访问：**http://localhost:7001**。开发环境下前端会把请求转发到后端（见 `web/craco.config.js`）。
+
+仅验证后端或构建产物时，可直接访问 **http://localhost:8000**（需已构建前端并嵌入，或使用下方 Docker 镜像）。
+
+### 本地构建（可选）
 
 ```bash
-docker run -p 8000:8000 casbin/casdoor-all-in-one
+# 前端静态资源
+cd web && yarn run build && cd ..
+
+# 后端二进制
+go build -o bin/manager main.go
 ```
 
-- **Docker Compose** (with your `conf/app.conf` next to `docker-compose.yml`):
+---
+
+## 生产环境（Docker）
+
+本仓库 CI 在发版时会构建并推送两个镜像（命名空间以 [Docker Hub](https://hub.docker.com/u/tomyjan) 为准，标签含版本号与 `latest`）：
+
+| 镜像 | Dockerfile 目标 | 用途简述 |
+|------|-----------------|----------|
+| `tomyjan/casdoor` | `STANDARD` | 仅 Casdoor 服务进程，**需外置数据库**（生产常用）。 |
+| `tomyjan/casdoor-all-in-one` | `ALLINONE` | 一体化镜像（内置依赖更多，适合快速试用；生产选型见官方文档）。 |
+
+拉取示例：
 
 ```bash
-docker compose up
+docker pull tomyjan/casdoor:latest
+docker pull tomyjan/casdoor-all-in-one:latest
 ```
 
-Then open [http://localhost:8000](http://localhost:8000) and sign in with `built-in/admin` / `123` on a fresh install.
+生产环境务必挂载配置、设置数据库地址与安全参数；具体环境变量与卷挂载见官方文档。
 
-Official guide: [Try with Docker](https://casdoor.ai/docs/basic/try-with-docker)
+### 使用本仓库的 docker compose
 
-### ☸️ Kubernetes Helm
-
-With Helm v3 and a running Kubernetes cluster:
+在仓库根目录（会构建镜像并启动 MySQL + Casdoor）：
 
 ```bash
-helm install casdoor oci://registry-1.docker.io/casbin/casdoor-helm-charts
+docker compose up -d
 ```
 
-After installation, access Casdoor through your cluster service/ingress. The official guide covers chart versions (including optional `--version`) and cluster-specific settings.
+默认将 Casdoor 映射到本机 **8000**，MySQL **3306**。首次启动示例中带有 `--createDatabase=true`（见 `docker-compose.yml`）。配置目录挂载为 `./conf`，可按需修改后重启。
 
-Official guide: [Try with Helm](https://casdoor.ai/docs/basic/try-with-helm)
+查看日志：
 
----
+```bash
+docker compose logs -f casdoor
+```
 
-<a id="features"></a>
-## ✨ Features
+停止：
 
-<table>
-<tr>
-<td width="50%">
+```bash
+docker compose down
+```
 
-### 🔐 Authentication
+### 镜像构建说明
 
-- **OAuth 2.0 / OIDC** — OpenID Connect and OAuth 2.x authorization
-- **SAML 2.0** — Enterprise SSO integration
-- **CAS** — Central Authentication Service
-- **LDAP** — Directory service integration
-- **WebAuthn / Passkeys** — Passwordless authentication
-- **TOTP / MFA** — Multi-factor authentication
-- **Face ID** — Biometric authentication
+根目录 `Dockerfile` 与上文两个镜像一一对应；本地可分别构建：
 
-</td>
-<td width="50%">
+```bash
+docker build --target STANDARD -t casdoor:local .
+docker build --target ALLINONE -t casdoor-all-in-one:local .
+```
 
-### 🏢 Enterprise
-
-- **SCIM 2.0** — User provisioning
-- **RBAC** — Role-based access control
-- **Social Login** — Google, GitHub, Azure AD, and more
-- **Custom providers** — Extensible identity providers
-- **User management** — Web UI for administration
-- **Audit logs** — Comprehensive logging
-- **Multi-tenancy** — Organization support
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🤖 AI & MCP
-
-- **MCP Gateway** — Model Context Protocol support
-- **A2A Protocol** — Agent-to-Agent communication
-- **AI-First Design** — Built for AI applications
-
-</td>
-<td width="50%">
-
-### 🛠️ Developer Experience
-
-- **RESTful API** — Complete API coverage
-- **SDKs** — Go, Java, Python, Node.js, and more
-- **Swagger UI** — Interactive API documentation
-- **Webhooks** — Event-driven integrations
-- **Customizable UI** — Brand theming support
-
-</td>
-</tr>
-</table>
+CI 中已关闭上游「同步 `casdoor-helm` 仓库并推 Helm OCI」步骤；若需自有 Helm 流程，请自行维护 chart 或参考 [官方 Helm 文档](https://casdoor.org/docs/basic/try-with-helm)。
 
 ---
 
-<a id="technology-stack"></a>
-## Technology stack
+## 更多资料
 
-Casdoor is built as a **frontend–backend separated** project:
+| 主题 | 链接 |
+|------|------|
+| 源码安装与配置 | https://casdoor.org/docs/basic/server-installation |
+| Docker 试用与说明 | https://casdoor.org/docs/basic/try-with-docker |
+| Helm / Kubernetes | https://casdoor.org/docs/basic/try-with-helm |
+| 如何接入应用 | https://casdoor.org/docs/how-to-connect/overview |
+| 公开 API 与 Swagger | https://casdoor.org/docs/basic/public-api |
 
-- **Web UI**: JavaScript and **React** ([`web/`](https://github.com/casdoor/casdoor/tree/master/web))
-- **API server**: **Go** with **Beego**, RESTful APIs ([repository root](https://github.com/casdoor/casdoor))
-- **Data**: mainstream databases including **MySQL**, **PostgreSQL**, and others ([overview](https://casdoor.ai/docs/overview))
-- **Cache**: optional **Redis** for session/cache-style deployments (configure as needed)
-
----
-
-<a id="documentation"></a>
-## 📖 Documentation
-
-**All product documentation, installation, and tutorials live at [casdoor.ai/docs/overview](https://casdoor.ai/docs/overview).** Start here, then use the sections below.
-
-**Install**
-
-- [Install from source](https://casdoor.ai/docs/basic/server-installation)
-- [Install with Docker](https://casdoor.ai/docs/basic/try-with-docker)
-- [Install with Kubernetes Helm](https://casdoor.ai/docs/basic/try-with-helm)
-
-**Connect applications**
-
-- [How to connect to Casdoor](https://casdoor.ai/docs/how-to-connect/overview)
-
-**APIs**
-
-- [Public API](https://casdoor.ai/docs/basic/public-api)
-- [Swagger UI](https://door.casdoor.com/swagger) (live API explorer)
+在线演示与完整文档入口：**https://casdoor.org**
 
 ---
 
-<a id="integrations"></a>
-## 🔌 Integrations
+## 许可证
 
-Casdoor integrates with common languages and frameworks:
-
-<p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/go/go-original.svg" width="40" alt="Go">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg" width="40" alt="Java">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg" width="40" alt="Python">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg" width="40" alt="Node.js">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg" width="40" alt="React">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg" width="40" alt="Vue">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/angularjs/angularjs-original.svg" width="40" alt="Angular">
-</p>
-
-Browse the full list: [Integrations](https://casdoor.ai/docs/category/integrations).
-
----
-
-<a id="community-and-support"></a>
-## 🤝 Community and support
-
-- **Discord**: [Join our community](https://discord.gg/5rPsrAzK7S)
-- **Contact**: [casdoor.ai/help](https://casdoor.ai/help)
-- **Issues**: [GitHub Issues](https://github.com/casdoor/casdoor/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/casdoor/casdoor/discussions)
-
----
-
-<a id="contributing"></a>
-## 🌍 Contributing
-
-If you have questions about Casdoor, you can **[open an issue](https://github.com/casdoor/casdoor/issues)**. Pull requests are welcome; **we recommend opening an issue first** so you can align with maintainers and the community before larger changes.
-
-Please also read our [contribution guidelines](https://casdoor.ai/docs/contributing/) before contributing.
-
-### Translation and i18n
-
-- **Crowdin** is used for translation workflows: [casdoor-site on Crowdin](https://crowdin.com/project/casdoor-site).
-- The web app uses **i18next**. When you add or change user-visible strings under [`web/`](https://github.com/casdoor/casdoor/tree/master/web), update the English catalog at [`web/src/locales/en/data.json`](web/src/locales/en/data.json) accordingly.
-
----
-
-<a id="donate"></a>
-## ❤️ Donate
-
-If you find Casdoor useful, please consider supporting its development:
-
-<a href="https://opencollective.com/casdoor#sponsor"><img src="https://opencollective.com/casdoor/tiers/sponsor.svg?avatarHeight=74" alt="Sponsors on Open Collective"></a>
-
-<a href="https://opencollective.com/casdoor#backer"><img src="https://opencollective.com/casdoor/tiers/backer.svg?avatarHeight=36" alt="Backers on Open Collective"></a>
-
----
-
-<a id="license"></a>
-## 📄 License
-
-Casdoor is licensed under the [Apache License 2.0](https://github.com/casdoor/casdoor/blob/master/LICENSE).
-
----
-
-<div align="center">
-
-[![Made with ❤️](https://img.shields.io/badge/Made_with-%E2%9D%A4%EF%B8%8F-ff6b6b?style=flat-square&logoColor=white)](https://casdoor.ai) [![By Casdoor](https://img.shields.io/badge/by-Casdoor-4ecdc4?style=flat-square)](https://casdoor.ai)
-
-<a href="https://github.com/casdoor/casdoor/stargazers"><img src="https://img.shields.io/github/stars/casdoor/casdoor?style=social&logo=github&label=Star" alt="GitHub Stars"></a>
-
-<sub>© 2026 <a href="https://casdoor.ai">Casdoor</a>. Licensed under <a href="https://github.com/casdoor/casdoor/blob/master/LICENSE">Apache License 2.0</a>.</sub>
-
-</div>
+[Apache-2.0](LICENSE)
