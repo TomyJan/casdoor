@@ -256,9 +256,34 @@ class SignupPage extends React.Component {
     }
   }
 
-  getLanguageSelectorMode(application) {
-    const languagesItem = application.signinItems?.find((item) => item.name === "Languages");
-    return languagesItem?.rule;
+  getLanguagesItem(application) {
+    return application.signupItems?.find((item) => item.name === "Languages");
+  }
+
+  renderLanguageSelect(application) {
+    const languagesItem = this.getLanguagesItem(application);
+    if (languagesItem && !languagesItem.visible) {
+      return null;
+    }
+
+    const languages = application.organizationObj.languages;
+    if (languages && languages.length <= 1) {
+      const language = (languages.length === 1) ? languages[0] : "en";
+      if (Setting.getLanguage() !== language) {
+        Setting.setLanguage(language);
+      }
+      return null;
+    }
+    return (
+      <div className="signup-languages">
+        {languagesItem?.customCss && <div dangerouslySetInnerHTML={{__html: ("<style>" + languagesItem.customCss.replaceAll("<style>", "").replaceAll("</style>", "") + "</style>")}} />}
+        <LanguageSelect
+          languages={languages}
+          mode={languagesItem?.rule}
+          style={{top: "55px", right: "5px", position: "absolute"}}
+        />
+      </div>
+    );
   }
 
   checkCaptchaStatus(values) {
@@ -1086,11 +1111,9 @@ class SignupPage extends React.Component {
               {
                 Setting.renderLogo(application)
               }
-              <LanguageSelect
-                languages={application.organizationObj.languages}
-                mode={this.getLanguageSelectorMode(application)}
-                style={{top: "55px", right: "5px", position: "absolute"}}
-              />
+              {
+                this.renderLanguageSelect(application)
+              }
               {
                 this.renderForm(application)
               }
