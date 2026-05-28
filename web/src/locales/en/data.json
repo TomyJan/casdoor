@@ -240,28 +240,6 @@
     "This scope is not defined in the application": "This scope is not defined in the application",
     "wants to access your account": "wants to access your account"
   },
-  "coupon": {
-    "0 means unlimited": "0 means unlimited",
-    "Discount": "Discount",
-    "Discount - Tooltip": "The discount value: either a fixed currency amount or a percentage, depending on the discount type",
-    "Discount type": "Discount type",
-    "Discount type - Tooltip": "How the discount is calculated: Fixed (subtract a fixed amount) or Percentage (subtract a percentage of the total)",
-    "Edit Coupon": "Edit Coupon",
-    "Fixed": "Fixed",
-    "Max discount": "Max discount",
-    "Max discount - Tooltip": "Maximum discount cap when using percentage-based discounts (0 means no maximum limit)",
-    "Max usage per user": "Max usage per user",
-    "Max usage per user - Tooltip": "Maximum number of times a single user can redeem this coupon (0 means unlimited)",
-    "Min order amount": "Min order amount",
-    "Min order amount - Tooltip": "Minimum order amount required before this coupon can be applied (0 means no minimum)",
-    "New Coupon": "New Coupon",
-    "Percentage": "Percentage",
-    "Product specific": "Product specific",
-    "Products - Tooltip": "Products that this coupon is applicable to. Leave empty to allow the coupon for all products",
-    "Universal": "Universal",
-    "Usage": "Usage",
-    "User specific": "User specific"
-  },
   "currency": {
     "AUD": "AUD",
     "BRL": "BRL",

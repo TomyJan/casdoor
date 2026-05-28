@@ -490,7 +490,7 @@ func (c *ApiController) ResetEmailOrPhone() {
 	}
 
 	if destType == object.VerifyTypePhone {
-		if object.HasUserByField(user.Owner, "phone", dest) {
+		if object.HasUserByPhoneAndCountryCode(user.Owner, dest, user.GetCountryCode("")) {
 			c.ResponseError(c.T("check:Phone already exists"))
 			return
 		}
@@ -604,7 +604,16 @@ func (c *ApiController) VerifyCode() {
 		}
 	}
 
-	if user, err = object.GetUserByFields(authForm.Organization, authForm.Username); err != nil {
+	// For phone-based lookup, normalise to E.164 before querying so that users
+	// in different countries sharing the same local number are distinguished correctly.
+	lookupUsername := authForm.Username
+	if !strings.Contains(authForm.Username, "@") && authForm.CountryCode != "" {
+		if e164, ok := util.GetE164Number(authForm.Username, authForm.CountryCode); ok {
+			lookupUsername = e164
+		}
+	}
+
+	if user, err = object.GetUserByFields(authForm.Organization, lookupUsername); err != nil {
 		c.ResponseError(err.Error())
 		return
 	} else if user == nil {
