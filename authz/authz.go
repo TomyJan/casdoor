@@ -51,7 +51,6 @@ var defaultApiRules = [][]string{
 	{"*", "*", "POST", "/api/device-auth", "*", "*"},
 	{"*", "*", "POST", "/api/cancel-device-auth", "*", "*"},
 	{"*", "*", "POST", "/api/device-auth-complete", "*", "*"},
-	{"*", "*", "POST", "/api/native-sso-complete", "*", "*"},
 	{"*", "*", "GET", "/api/get-account", "*", "*"},
 	{"*", "*", "GET", "/api/userinfo", "*", "*"},
 	{"*", "*", "GET", "/api/user", "*", "*"},
