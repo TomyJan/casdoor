@@ -163,7 +163,7 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		return nil, fmt.Errorf("not an internal user")
 	}
 
-	idStr := oauthStableID(infoResp.UserId, "", "", "", infoResp.Email)
+	idStr := oauthStableID(userResp.UserId, "", "", "", userResp.Email)
   userInfo := UserInfo{
 		Id: idStr,
 	}
@@ -191,8 +191,8 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		if detailResp.Errcode != 0 {
 			return nil, fmt.Errorf("getuserdetail.Errcode = %d, getuserdetail.Errmsg = %s", detailResp.Errcode, detailResp.Errmsg)
 		}
-		userInfo.Username = oauthUsernamePreferLogin("", infoResp.UserId, "", "", infoResp.Email)
-		userInfo.DisplayName = displayNameFromNickname(infoResp.Name, "", "", infoResp.Email, idStr)
+		userInfo.Username = oauthUsernamePreferLogin("", detailResp.UserId, "", "", detailResp.Email)
+		userInfo.DisplayName = displayNameFromNickname(detailResp.Name, "", "", detailResp.Email, idStr)
 		userInfo.Email = detailResp.Email
 		userInfo.AvatarUrl = detailResp.Avatar
 	} else {
