@@ -164,7 +164,7 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 	}
 
 	idStr := oauthStableID(userResp.UserId, "", "", "", userResp.UserEmail)
-    userInfo := UserInfo{
+	userInfo := UserInfo{
 		Id: idStr,
 	}
 
@@ -175,7 +175,8 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		resp, err = idp.Client.Post(
 			fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/user/getuserdetail?access_token=%s", accessToken),
 			"application/json;charset=UTF-8",
-			bytes.NewReader(bs))
+			bytes.NewReader(bs),
+		)
 		if err != nil {
 			return nil, err
 		}
