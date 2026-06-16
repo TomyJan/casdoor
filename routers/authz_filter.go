@@ -112,10 +112,14 @@ func getSubject(ctx *context.Context) (string, string) {
 		return "anonymous", "anonymous"
 	}
 
-	// username == "built-in/admin"
-	owner, name, err := util.GetOwnerAndNameFromIdWithError(username)
+	ownerType, owner, name, err := util.ParseUserId(username)
 	if err != nil {
 		panic(err)
+	}
+	if ownerType != "" {
+		// Typed identity (e.g. "app/casbin/app-casibase"): keep ownerType as
+		// subOwner so IsAllowed can detect the identity type.
+		return ownerType, owner + "/" + name
 	}
 	return owner, name
 }
