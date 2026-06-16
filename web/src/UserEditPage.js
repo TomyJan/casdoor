@@ -86,7 +86,6 @@ class UserEditPage extends React.Component {
     if (Setting.isLocalAdminUser(this.props.account)) {
       this.getOrganizations();
     }
-    this.getApplicationsByOrganization(this.state.organizationName);
     this.getUserApplication();
     this.setReturnUrl();
   }
@@ -115,6 +114,8 @@ class UserEditPage extends React.Component {
           multiFactorAuths: res.data?.multiFactorAuths ?? [],
           consents: res.data?.applicationScopes ?? [],
           loading: false,
+        }, () => {
+          this.getApplicationsByOrganization(this.state.organizationName);
         });
 
         // Load user transactions
@@ -498,17 +499,16 @@ class UserEditPage extends React.Component {
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Email"), i18next.t("general:Email - Tooltip"))} :
           </Col>
-          <Col style={{paddingRight: "20px"}} span={5} >
+          <Col style={{paddingRight: "20px"}} span={Setting.isMobile() ? 22 : 6} >
             <Input
               value={this.state.user.email}
-              style={{width: "280Px"}}
               disabled={!Setting.isLocalAdminUser(this.props.account) ? true : disabled}
               onChange={e => {
                 this.updateUserField("email", e.target.value);
               }}
             />
           </Col>
-          <Col span={Setting.isMobile() ? 22 : 5} >
+          <Col span={Setting.isMobile() ? 22 : 6} >
             {/* backend auto get the current user, so admin can not edit. Just self can reset*/}
             {this.isSelf() ? <ResetModal application={this.state.application} disabled={disabled} buttonText={i18next.t("user:Reset Email...")} destType={"email"} /> : null}
           </Col>
@@ -520,8 +520,8 @@ class UserEditPage extends React.Component {
           <Col style={{marginTop: "5px"}} span={Setting.isMobile() ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Phone"), i18next.t("general:Phone - Tooltip"))} :
           </Col>
-          <Col style={{paddingRight: "20px"}} span={5} >
-            <Input.Group compact style={{width: "280Px"}}>
+          <Col style={{paddingRight: "20px"}} span={Setting.isMobile() ? 22 : 6} >
+            <Input.Group compact>
               <CountryCodeSelect
                 style={{width: "30%"}}
                 // disabled={!Setting.isLocalAdminUser(this.props.account) ? true : disabled}
@@ -539,7 +539,7 @@ class UserEditPage extends React.Component {
                 }} />
             </Input.Group>
           </Col>
-          <Col span={Setting.isMobile() ? 24 : 5} >
+          <Col span={Setting.isMobile() ? 22 : 6} >
             {this.isSelf() ? (<ResetModal application={this.state.application} countryCode={this.getCountryCode()} disabled={disabled} buttonText={i18next.t("user:Reset Phone...")} destType={"phone"} />) : null}
           </Col>
         </Row>
