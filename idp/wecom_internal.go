@@ -163,7 +163,7 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		return nil, fmt.Errorf("not an internal user")
 	}
 
-	idStr := oauthStableID(userResp.UserId, "", "", "", userResp.Email)
+	idStr := oauthStableID(userResp.UserId, "", "", "", userResp.UserEmail)
   userInfo := UserInfo{
 		Id: idStr,
 	}
