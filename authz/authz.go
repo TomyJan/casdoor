@@ -60,7 +60,7 @@ var defaultApiRules = [][]string{
 	{"*", "*", "GET", "/api/get-webhook-event", "*", "*"},
 	{"*", "*", "GET", "/api/get-captcha-status", "*", "*"},
 	{"*", "*", "*", "/api/login/oauth", "*", "*"},
-	{"*", "*", "POST", "/api/oauth/register", "*", "*"},
+	{"*", "*", "*", "/api/oauth/register", "*", "*"},
 	{"*", "*", "GET", "/api/get-application", "*", "*"},
 	{"*", "*", "GET", "/api/get-organization-applications", "*", "*"},
 	{"*", "*", "GET", "/api/get-user", "*", "*"},
