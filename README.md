@@ -10,7 +10,7 @@
 
 [用昵称当用户名](https://github.com/casdoor/casdoor/pull/4975) , 还有我懒得说的其他平台明明给了用户 UID 还要用用户名当 ID 何意味?
 
-当个 Contributor 以为自己是 CN 体制内领导吗?
+~~当个 Contributor 以为自己是 CN 体制内领导吗?~~ 原来真是啊, 这下明白了. 罗杨博士继续加油好好刷 commit !
 
 ---
 
