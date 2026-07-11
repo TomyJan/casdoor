@@ -363,7 +363,7 @@ class LoginPage extends React.Component {
 
     if (resp.data3) {
       sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-      Setting.goToLinkSoft(ths, "/account");
+      Setting.goToLink("/account");
       return;
     }
 
@@ -557,7 +557,7 @@ class LoginPage extends React.Component {
             if (responseType === "login") {
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                Setting.goToLink("/account");
                 return;
               }
               Setting.showMessage("success", i18next.t("application:Logged in successfully"));
@@ -572,7 +572,7 @@ class LoginPage extends React.Component {
             } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                Setting.goToLink("/account");
                 return;
               }
               const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
@@ -595,7 +595,7 @@ class LoginPage extends React.Component {
               }
               if (res.data3) {
                 sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                Setting.goToLink("/account");
                 return;
               }
               if (res.data2.method === "POST") {
@@ -1699,7 +1699,7 @@ class LoginPage extends React.Component {
 
     if (application.signinHtml !== "") {
       return (
-        <div dangerouslySetInnerHTML={{__html: application.signinHtml}} />
+        <Setting.RenderCustomHtml html={application.signinHtml} />
       );
     }
 
@@ -1739,7 +1739,7 @@ class LoginPage extends React.Component {
           {Setting.inIframe() || !Setting.isMobile() ? null : <style dangerouslySetInnerHTML={{__html: Setting.getStyleInnerCss(application.formCssMobile)}} />}
           <div className={Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"}>
             <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
-              <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
+              <Setting.RenderCustomHtml html={application.formSideHtml} />
             </div>
             <div className="login-form">
               <div>
