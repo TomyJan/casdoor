@@ -391,7 +391,7 @@ func (c *ApiController) Signup() {
 // @Param   client_id     query    string  false     "client_id"
 // @Param   state     query    string  false     "state"
 // @Success 200 {object} controllers.Response The Response object
-// @router /logout [post]
+// @router /logout [get,post]
 func (c *ApiController) Logout() {
 	// https://openid.net/specs/openid-connect-rpinitiated-1_0-final.html
 	accessToken := c.GetString("id_token_hint")
@@ -473,6 +473,12 @@ func (c *ApiController) Logout() {
 
 		if user == "" {
 			user = util.GetId(token.Organization, token.User)
+
+			// RecordMessage() captured "recordUserId" from the session before this handler ran,
+			// but RP-Initiated Logout may carry no session cookie. Overwrite it with the subject
+			// resolved from "id_token_hint" so the audit record and webhook are not left with an
+			// empty user and organization.
+			c.Ctx.Input.SetParam("recordUserId", user)
 		}
 
 		// Capture the Beego session id before ClearUserSession(): SessionRegenerateID()
@@ -559,12 +565,6 @@ func (c *ApiController) SsoLogout() {
 		return
 	}
 
-	_, err = object.DeleteSessionId(util.GetSessionId(owner, username, object.CasdoorApplication), currentSessionId)
-	if err != nil {
-		c.ResponseError(err.Error())
-		return
-	}
-
 	var tokens []*object.Token
 	var sessionIds []string
 
@@ -595,10 +595,11 @@ func (c *ApiController) SsoLogout() {
 			return
 		}
 
+		// The ids are collected for the SSO logout notification below, the Beego sessions
+		// themselves are destroyed by DeleteAllUserSessions()
 		for _, session := range sessions {
 			sessionIds = append(sessionIds, session.SessionId...)
 		}
-		object.DeleteBeegoSession(sessionIds)
 
 		_, err = object.DeleteAllUserSessions(owner, username)
 		if err != nil {
@@ -613,6 +614,16 @@ func (c *ApiController) SsoLogout() {
 
 		// Only delete the current session's Beego session
 		object.DeleteBeegoSession(sessionIds)
+
+		// The current Beego session id is stored under the application used at login, which is
+		// often not "app-built-in", so it has to be removed from every Session row holding it.
+		// This runs after "sessionIds" has been filled, so the SSO logout notification below
+		// still carries the current session id.
+		err = object.DeleteUserSessionId(owner, username, currentSessionId)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
 
 		util.LogInfo(c.Ctx, "API: [%s] logged out from current session", user)
 	}
@@ -868,10 +879,7 @@ func (c *ApiController) deleteUserSession(user string, beegoSessionId string) er
 		return err
 	}
 
-	// Casdoor session ID derived from owner, username, and application
-	sessionId := util.GetSessionId(owner, username, object.CasdoorApplication)
-
-	_, err = object.DeleteSessionId(sessionId, beegoSessionId)
+	err = object.DeleteUserSessionId(owner, username, beegoSessionId)
 	if err != nil {
 		return err
 	}
