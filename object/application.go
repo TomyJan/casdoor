@@ -326,12 +326,10 @@ func GetApplicationByUser(user *User) (*Application, error) {
 }
 
 func GetApplicationByUserId(userId string) (application *Application, err error) {
-	_, name, err := util.GetOwnerAndNameFromIdWithError(userId)
-	if err != nil {
-		return nil, err
-	}
 	if IsAppUser(userId) {
-		application, err = getApplication("admin", name)
+		// App owner in the DB is always "admin"; org is stored in Application.Organization.
+		_, appName := ParseAppUserId(userId)
+		application, err = getApplication("admin", appName)
 		return
 	}
 
