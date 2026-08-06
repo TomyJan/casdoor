@@ -65,6 +65,8 @@ type Organization struct {
 	PasswordObfuscatorType string     `xorm:"varchar(100)" json:"passwordObfuscatorType"`
 	PasswordObfuscatorKey  string     `xorm:"varchar(100)" json:"passwordObfuscatorKey"`
 	PasswordExpireDays     int        `json:"passwordExpireDays"`
+	TokenRetentionDays     int        `json:"tokenRetentionDays"`
+	RecordRetentionDays    int        `json:"recordRetentionDays"`
 	CountryCodes           []string   `xorm:"mediumtext"  json:"countryCodes"`
 	DefaultAvatar          string     `xorm:"varchar(200)" json:"defaultAvatar"`
 	UsePermanentAvatar     bool       `xorm:"bool" json:"usePermanentAvatar"`
