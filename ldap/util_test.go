@@ -103,7 +103,8 @@ func TestLdapFilterOnSyntheticAttributes(t *testing.T) {
 		{
 			"Should match a user by homeDirectory",
 			"(homeDirectory=/home/alice)",
-			"1 = 1", nil,
+			"1 = 1",
+			nil,
 			[]*object.User{alice},
 		},
 		{
@@ -116,7 +117,8 @@ func TestLdapFilterOnSyntheticAttributes(t *testing.T) {
 		{
 			"Should only keep unassigned users for a non-numeric uidNumber",
 			"(uidNumber=abc)",
-			unassigned, args(0),
+			unassigned,
+			args(0),
 			[]*object.User{},
 		},
 		{
@@ -129,7 +131,8 @@ func TestLdapFilterOnSyntheticAttributes(t *testing.T) {
 		{
 			"Should treat synthetic attributes as always present",
 			"(uidNumber=*)",
-			"1 = 1", nil,
+			"1 = 1",
+			nil,
 			users,
 		},
 	}
