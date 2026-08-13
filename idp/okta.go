@@ -217,10 +217,11 @@ func (idp *OktaIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 		}
 	}
 
+	idStr := oauthStableID(oktaUserInfo.Sub, "", "", "", oktaUserInfo.Email)
 	userInfo := UserInfo{
-		Id:          oktaUserInfo.Sub,
-		Username:    oktaUserInfo.PreferredUsername,
-		DisplayName: oktaUserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(oktaUserInfo.PreferredUsername, oktaUserInfo.Sub, "", "", oktaUserInfo.Email),
+		DisplayName: displayNameFromNickname("", oktaUserInfo.Name, oktaUserInfo.PreferredUsername, oktaUserInfo.Email, idStr),
 		Email:       oktaUserInfo.Email,
 		AvatarUrl:   oktaUserInfo.Picture,
 		Extra:       extra,
