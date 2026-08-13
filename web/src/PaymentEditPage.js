@@ -41,6 +41,14 @@ class PaymentEditPage extends React.Component {
   }
 
   getPayment() {
+    if (this.state.mode === "add" && this.props.location.payment) {
+      const payment = this.props.location.payment;
+      this.setState({
+        payment: payment,
+      });
+      return;
+    }
+
     PaymentBackend.getPayment(this.state.organizationName, this.state.paymentName)
       .then((res) => {
         if (res.data === null) {
@@ -381,7 +389,8 @@ class PaymentEditPage extends React.Component {
           <Col span={22} >
             {
               this.state.payment.invoiceUrl === "" ? (
-                <Button type={"primary"} loading={this.state.isInvoiceLoading} onClick={() => {
+                // the invoice is issued for the saved payment, so it needs the payment to exist
+                <Button type={"primary"} disabled={this.state.mode === "add"} loading={this.state.isInvoiceLoading} onClick={() => {
                   const errorText = this.checkError();
                   if (errorText !== "") {
                     Setting.showMessage("error", errorText);
@@ -458,12 +467,17 @@ class PaymentEditPage extends React.Component {
     }
 
     const payment = Setting.deepCopy(this.state.payment);
-    PaymentBackend.updatePayment(this.state.payment.owner, this.state.paymentName, payment)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? PaymentBackend.addPayment(payment)
+      : PaymentBackend.updatePayment(this.state.payment.owner, this.state.paymentName, payment);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             paymentName: this.state.payment.name,
+            mode: "edit",
           });
 
           if (exitAfterSave) {
@@ -473,7 +487,9 @@ class PaymentEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updatePaymentField("name", this.state.paymentName);
+          if (!isAdd) {
+            this.updatePaymentField("name", this.state.paymentName);
+          }
         }
       })
       .catch(error => {
@@ -482,17 +498,7 @@ class PaymentEditPage extends React.Component {
   }
 
   deletePayment() {
-    PaymentBackend.deletePayment(Setting.getDeleteObj(this.state.payment, this.state.organizationName, this.state.paymentName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/payments");
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/payments");
   }
 
   render() {

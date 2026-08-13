@@ -120,6 +120,14 @@ class WebhookEditPage extends React.Component {
   }
 
   getWebhook() {
+    if (this.state.mode === "add" && this.props.location.webhook) {
+      const webhook = this.props.location.webhook;
+      this.setState({
+        webhook: webhook,
+      });
+      return;
+    }
+
     WebhookBackend.getWebhook("admin", this.state.webhookName, this.props.account.owner)
       .then((res) => {
         if (res.data === null) {
@@ -333,7 +341,8 @@ class WebhookEditPage extends React.Component {
             {Setting.getLabel(i18next.t("webhook:Single org only"), i18next.t("webhook:Single org only - Tooltip"))} :
           </Col>
           <Col span={1} >
-            <Switch checked={this.state.webhook.singleOrgOnly} onChange={checked => {
+            {/* turning this off makes the webhook receive the records of every organization, which is reserved for global admins */}
+            <Switch disabled={!Setting.isAdminUser(this.props.account)} checked={this.state.webhook.singleOrgOnly} onChange={checked => {
               this.updateWebhookField("singleOrgOnly", checked);
             }} />
           </Col>
@@ -354,12 +363,17 @@ class WebhookEditPage extends React.Component {
 
   submitWebhookEdit(exitAfterSave) {
     const webhook = Setting.deepCopy(this.state.webhook);
-    WebhookBackend.updateWebhook(this.state.webhook.owner, this.state.webhookName, webhook)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? WebhookBackend.addWebhook(webhook)
+      : WebhookBackend.updateWebhook(this.state.webhook.owner, this.state.webhookName, webhook);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             webhookName: this.state.webhook.name,
+            mode: "edit",
           });
 
           if (exitAfterSave) {
@@ -369,7 +383,9 @@ class WebhookEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateWebhookField("name", this.state.webhookName);
+          if (!isAdd) {
+            this.updateWebhookField("name", this.state.webhookName);
+          }
         }
       })
       .catch(error => {
@@ -378,17 +394,7 @@ class WebhookEditPage extends React.Component {
   }
 
   deleteWebhook() {
-    WebhookBackend.deleteWebhook(Setting.getDeleteObj(this.state.webhook, this.state.webhook.owner, this.state.webhookName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/webhooks");
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/webhooks");
   }
 
   render() {

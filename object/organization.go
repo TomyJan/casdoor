@@ -71,6 +71,7 @@ type Organization struct {
 	DefaultAvatar          string     `xorm:"varchar(200)" json:"defaultAvatar"`
 	UsePermanentAvatar     bool       `xorm:"bool" json:"usePermanentAvatar"`
 	DefaultApplication     string     `xorm:"varchar(100)" json:"defaultApplication"`
+	DefaultTokenFormat     string     `xorm:"varchar(100)" json:"defaultTokenFormat"`
 	UserTypes              []string   `xorm:"mediumtext" json:"userTypes"`
 	Tags                   []string   `xorm:"mediumtext" json:"tags"`
 	Languages              []string   `xorm:"varchar(255)" json:"languages"`
@@ -229,6 +230,19 @@ func GetMaskedOrganizations(isAdmin bool, organizations []*Organization, errs ..
 	return organizations, nil
 }
 
+// hashMasterPassword hashes the master password in place so that it is never stored in plaintext.
+// The masked value "***" means the password is unchanged, so it is left as-is.
+func (organization *Organization) hashMasterPassword() {
+	if organization.MasterPassword == "" || organization.MasterPassword == "***" {
+		return
+	}
+
+	credManager := cred.GetCredManager(organization.PasswordType)
+	if credManager != nil {
+		organization.MasterPassword = credManager.GetHashedPassword(organization.MasterPassword, organization.PasswordSalt)
+	}
+}
+
 func UpdateOrganization(id string, organization *Organization, isGlobalAdmin bool) (bool, error) {
 	owner, name, err := util.GetOwnerAndNameFromIdWithError(id)
 	if err != nil {
@@ -252,13 +266,7 @@ func UpdateOrganization(id string, organization *Organization, isGlobalAdmin boo
 		}
 	}
 
-	if organization.MasterPassword != "" && organization.MasterPassword != "***" {
-		credManager := cred.GetCredManager(organization.PasswordType)
-		if credManager != nil {
-			hashedPassword := credManager.GetHashedPassword(organization.MasterPassword, organization.PasswordSalt)
-			organization.MasterPassword = hashedPassword
-		}
-	}
+	organization.hashMasterPassword()
 
 	if !isGlobalAdmin {
 		organization.NavItems = org.NavItems
@@ -287,6 +295,19 @@ func UpdateOrganization(id string, organization *Organization, isGlobalAdmin boo
 }
 
 func AddOrganization(organization *Organization) (bool, error) {
+	// there is no previous record for a new organization, so the masked values mean "empty"
+	if organization.MasterPassword == "***" {
+		organization.MasterPassword = ""
+	}
+	if organization.DefaultPassword == "***" {
+		organization.DefaultPassword = ""
+	}
+	if organization.MasterVerificationCode == "***" {
+		organization.MasterVerificationCode = ""
+	}
+
+	organization.hashMasterPassword()
+
 	affected, err := ormer.Engine.Insert(organization)
 	if err != nil {
 		return false, err
@@ -318,6 +339,22 @@ func GetOrganizationByUser(user *User) (*Organization, error) {
 	}
 
 	return getOrganization("admin", user.Owner)
+}
+
+// GetDefaultTokenFormat returns the token format that newly created applications of the
+// organization should use. It falls back to "JWT" when the organization does not exist or
+// has no default token format configured yet.
+func GetDefaultTokenFormat(organizationName string) (string, error) {
+	organization, err := getOrganization("admin", organizationName)
+	if err != nil {
+		return "", err
+	}
+
+	if organization == nil || organization.DefaultTokenFormat == "" {
+		return "JWT", nil
+	}
+
+	return organization.DefaultTokenFormat, nil
 }
 
 func GetAccountItemByName(name string, organization *Organization) *AccountItem {

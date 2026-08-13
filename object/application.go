@@ -472,6 +472,14 @@ func AddApplication(application *Application) (bool, error) {
 	if application.ClientSecret == "" {
 		application.ClientSecret = util.GenerateClientSecret()
 	}
+	if application.TokenFormat == "" {
+		tokenFormat, err := GetDefaultTokenFormat(application.Organization)
+		if err != nil {
+			return false, err
+		}
+
+		application.TokenFormat = tokenFormat
+	}
 
 	app, err := GetApplicationByClientId(application.ClientId)
 	if err != nil {
@@ -480,6 +488,15 @@ func AddApplication(application *Application) (bool, error) {
 
 	if app != nil {
 		return false, nil
+	}
+
+	if application.IsShared == true && application.Organization != "built-in" {
+		return false, fmt.Errorf("only applications belonging to built-in organization can be shared")
+	}
+
+	err = checkMultipleCaptchaProviders(application, "en")
+	if err != nil {
+		return false, err
 	}
 
 	// Initialize default values for required fields to prevent UI errors

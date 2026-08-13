@@ -43,6 +43,18 @@ class TicketEditPage extends React.Component {
   }
 
   getTicket() {
+    if (this.state.mode === "add" && this.props.location.ticket) {
+      const ticket = this.props.location.ticket;
+      if (ticket.messages === null || ticket.messages === undefined) {
+        ticket.messages = [];
+      }
+
+      this.setState({
+        ticket: ticket,
+      });
+      return;
+    }
+
     TicketBackend.getTicket(this.state.organizationName, this.state.ticketName)
       .then((res) => {
         if (res.data === null) {
@@ -79,12 +91,17 @@ class TicketEditPage extends React.Component {
 
   submitTicketEdit(willExist) {
     const ticket = Setting.deepCopy(this.state.ticket);
-    TicketBackend.updateTicket(this.state.organizationName, this.state.ticketName, ticket)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? TicketBackend.addTicket(ticket)
+      : TicketBackend.updateTicket(this.state.organizationName, this.state.ticketName, ticket);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             ticketName: this.state.ticket.name,
+            mode: "edit",
           });
           if (willExist) {
             this.props.history.push("/tickets");
@@ -93,7 +110,9 @@ class TicketEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateTicketField("name", this.state.ticketName);
+          if (!isAdd) {
+            this.updateTicketField("name", this.state.ticketName);
+          }
         }
       })
       .catch(error => {
@@ -309,7 +328,9 @@ class TicketEditPage extends React.Component {
         }
         <br />
         {
-          this.state.ticket !== null ? this.renderMessages() : <Loading type="page" tip={i18next.t("login:Loading")} />
+          // messages are appended to the saved ticket, so they can only be sent after the ticket is created
+          this.state.mode === "add" ? null :
+            this.state.ticket !== null ? this.renderMessages() : <Loading type="page" tip={i18next.t("login:Loading")} />
         }
       </div>
     );

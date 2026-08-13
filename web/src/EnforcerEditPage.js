@@ -44,6 +44,17 @@ class EnforcerEditPage extends React.Component {
   }
 
   getEnforcer() {
+    if (this.state.mode === "add" && this.props.location.enforcer) {
+      const enforcer = this.props.location.enforcer;
+      this.setState({
+        enforcer: enforcer,
+      });
+
+      this.getModels(this.state.organizationName);
+      this.getAdapters(this.state.organizationName);
+      return;
+    }
+
     EnforcerBackend.getEnforcer(this.state.organizationName, this.state.enforcerName, true)
       .then((res) => {
         if (res.data === null) {
@@ -187,27 +198,42 @@ class EnforcerEditPage extends React.Component {
             } />
           </Col>
         </Row>
-        <Row style={{marginTop: "20px"}} >
-          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("adapter:Policies"), i18next.t("adapter:Policies - Tooltip"))} :
-          </Col>
-          <Col span={22}>
-            <PolicyTable enforcer={this.state.enforcer} modelCfg={this.state.enforcer?.modelCfg} mode={this.state.mode} />
-          </Col>
-        </Row>
+        {
+          // policies are stored in the adapter and looked up by the enforcer, so they can only be managed after the enforcer is saved
+          this.state.mode === "add" ? null : (
+            <Row style={{marginTop: "20px"}} >
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+                {Setting.getLabel(i18next.t("adapter:Policies"), i18next.t("adapter:Policies - Tooltip"))} :
+              </Col>
+              <Col span={22}>
+                <PolicyTable enforcer={this.state.enforcer} modelCfg={this.state.enforcer?.modelCfg} mode={this.state.mode} />
+              </Col>
+            </Row>
+          )
+        }
       </Card>
     );
   }
 
   submitEnforcerEdit(exitAfterSave) {
     const enforcer = Setting.deepCopy(this.state.enforcer);
-    EnforcerBackend.updateEnforcer(this.state.organizationName, this.state.enforcerName, enforcer)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? EnforcerBackend.addEnforcer(enforcer)
+      : EnforcerBackend.updateEnforcer(this.state.organizationName, this.state.enforcerName, enforcer);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             organizationName: this.state.enforcer.owner,
             enforcerName: this.state.enforcer.name,
+            mode: "edit",
+          }, () => {
+            if (isAdd && !exitAfterSave) {
+              // the enforcer exists now, reload it so that its modelCfg and policies are available
+              this.getEnforcer();
+            }
           });
 
           if (exitAfterSave) {
@@ -217,7 +243,9 @@ class EnforcerEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateEnforcerField("name", this.state.enforcerName);
+          if (!isAdd) {
+            this.updateEnforcerField("name", this.state.enforcerName);
+          }
         }
       })
       .catch(error => {
@@ -226,17 +254,7 @@ class EnforcerEditPage extends React.Component {
   }
 
   deleteEnforcer() {
-    EnforcerBackend.deleteEnforcer(Setting.getDeleteObj(this.state.enforcer, this.state.organizationName, this.state.enforcerName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/enforcers");
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/enforcers");
   }
 
   render() {

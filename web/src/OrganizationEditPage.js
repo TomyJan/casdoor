@@ -50,12 +50,32 @@ class OrganizationEditPage extends React.Component {
 
   UNSAFE_componentWillMount() {
     this.getOrganization();
+
+    // in "add" mode the organization does not exist in the DB yet, so it owns nothing
+    if (this.state.mode === "add") {
+      this.setState({ldaps: []});
+      return;
+    }
+
+    this.getRelatedResources();
+  }
+
+  getRelatedResources() {
     this.getApplications();
     this.getLdaps();
     this.getOrganizationTransactions();
   }
 
   getOrganization() {
+    if (this.state.mode === "add" && this.props.location.organization) {
+      const organization = this.props.location.organization;
+      organization["enableDarkLogo"] = !!organization["logoDark"];
+      this.setState({
+        organization: organization,
+      });
+      return;
+    }
+
     OrganizationBackend.getOrganization("admin", this.state.organizationName)
       .then((res) => {
         if (res.status === "ok") {
@@ -504,6 +524,16 @@ class OrganizationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("organization:Default token format"), i18next.t("organization:Default token format - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} style={{width: "100%"}} value={!this.state.organization.defaultTokenFormat ? "JWT" : this.state.organization.defaultTokenFormat} onChange={(value => {this.updateOrganizationField("defaultTokenFormat", value);})}
+              options={["JWT", "JWT-Empty", "JWT-Custom", "JWT-Standard"].map((item) => Setting.getOption(item, item))
+              } />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("organization:User types"), i18next.t("organization:User types - Tooltip"))} :
           </Col>
           <Col span={22} >
@@ -829,21 +859,26 @@ class OrganizationEditPage extends React.Component {
             />
           </Col>
         </Row>
-        <Row style={{marginTop: "20px"}}>
-          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("general:LDAPs"), i18next.t("general:LDAPs - Tooltip"))} :
-          </Col>
-          <Col span={22}>
-            <LdapTable
-              title={i18next.t("general:LDAPs")}
-              table={this.state.ldaps}
-              organizationName={this.state.organizationName}
-              onUpdateTable={(value) => {
-                this.setState({ldaps: value});
-              }}
-            />
-          </Col>
-        </Row>
+        {
+          // LDAPs belong to an existing organization, so they can only be managed after the organization is saved
+          this.state.mode === "add" ? null : (
+            <Row style={{marginTop: "20px"}}>
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+                {Setting.getLabel(i18next.t("general:LDAPs"), i18next.t("general:LDAPs - Tooltip"))} :
+              </Col>
+              <Col span={22}>
+                <LdapTable
+                  title={i18next.t("general:LDAPs")}
+                  table={this.state.ldaps}
+                  organizationName={this.state.organizationName}
+                  onUpdateTable={(value) => {
+                    this.setState({ldaps: value});
+                  }}
+                />
+              </Col>
+            </Row>
+          )
+        }
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("organization:Kerberos realm"), i18next.t("organization:Kerberos realm - Tooltip"))} :
@@ -898,7 +933,11 @@ class OrganizationEditPage extends React.Component {
       return;
     }
 
-    OrganizationBackend.updateOrganization(this.state.organization.owner, this.state.organizationName, organization)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? OrganizationBackend.addOrganization(organization)
+      : OrganizationBackend.updateOrganization(this.state.organization.owner, this.state.organizationName, organization);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
@@ -909,6 +948,12 @@ class OrganizationEditPage extends React.Component {
 
           this.setState({
             organizationName: this.state.organization.name,
+            mode: "edit",
+          }, () => {
+            if (isAdd) {
+              // the organization exists now, so its LDAPs and other sub-resources can be loaded
+              this.getRelatedResources();
+            }
           });
           window.dispatchEvent(new Event("storageOrganizationsChanged"));
 
@@ -919,7 +964,9 @@ class OrganizationEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateOrganizationField("name", this.state.organizationName);
+          if (!isAdd) {
+            this.updateOrganizationField("name", this.state.organizationName);
+          }
         }
       })
       .catch(error => {
@@ -928,18 +975,7 @@ class OrganizationEditPage extends React.Component {
   }
 
   deleteOrganization() {
-    OrganizationBackend.deleteOrganization(Setting.getDeleteObj(this.state.organization, this.state.organization.owner, this.state.organizationName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/organizations");
-          window.dispatchEvent(new Event("storageOrganizationsChanged"));
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/organizations");
   }
 
   render() {

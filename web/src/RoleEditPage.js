@@ -42,6 +42,14 @@ class RoleEditPage extends React.Component {
   }
 
   getRole() {
+    if (this.state.mode === "add" && this.props.location.role) {
+      const role = this.props.location.role;
+      this.setState({
+        role: role,
+      });
+      return;
+    }
+
     RoleBackend.getRole(this.state.organizationName, this.state.roleName)
       .then((res) => {
         if (res.data === null) {
@@ -151,7 +159,7 @@ class RoleEditPage extends React.Component {
                 return [this.state.role.owner, page, pageSize, field, searchText];
               }}
               reloadKey={this.state.role.owner}
-              optionMapper={(user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`)}
+              optionMapper={(user) => Setting.getDisplayNameOption(user)}
               filterOption={false}
               onChange={(value => {this.updateRoleField("users", value);})}
             />
@@ -172,7 +180,7 @@ class RoleEditPage extends React.Component {
                 return [this.state.role.owner, false, page, pageSize, field, searchText, "", ""];
               }}
               reloadKey={this.state.role.owner}
-              optionMapper={(group) => Setting.getOption(`${group.owner}/${group.name}`, `${group.owner}/${group.name}`)}
+              optionMapper={(group) => Setting.getDisplayNameOption(group)}
               filterOption={false}
               onChange={(value => {this.updateRoleField("groups", value);})}
             />
@@ -197,7 +205,7 @@ class RoleEditPage extends React.Component {
                 if (role.owner === this.state.role.owner && role.name === this.state.role.name) {
                   return null;
                 }
-                return Setting.getOption(`${role.owner}/${role.name}`, `${role.owner}/${role.name}`);
+                return Setting.getDisplayNameOption(role);
               }}
               filterOption={false}
               onChange={(value => {this.updateRoleField("roles", value);})}
@@ -232,13 +240,18 @@ class RoleEditPage extends React.Component {
 
   submitRoleEdit(exitAfterSave) {
     const role = Setting.deepCopy(this.state.role);
-    RoleBackend.updateRole(this.state.organizationName, this.state.roleName, role)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? RoleBackend.addRole(role)
+      : RoleBackend.updateRole(this.state.organizationName, this.state.roleName, role);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             organizationName: this.state.role.owner,
             roleName: this.state.role.name,
+            mode: "edit",
           });
 
           if (exitAfterSave) {
@@ -248,7 +261,9 @@ class RoleEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateRoleField("name", this.state.roleName);
+          if (!isAdd) {
+            this.updateRoleField("name", this.state.roleName);
+          }
         }
       })
       .catch(error => {
@@ -257,17 +272,7 @@ class RoleEditPage extends React.Component {
   }
 
   deleteRole() {
-    RoleBackend.deleteRole(Setting.getDeleteObj(this.state.role, this.state.organizationName, this.state.roleName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/roles");
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/roles");
   }
 
   render() {

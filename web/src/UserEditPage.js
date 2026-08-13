@@ -97,6 +97,19 @@ class UserEditPage extends React.Component {
   }
 
   getUser() {
+    if (this.state.mode === "add" && this.props.location.user) {
+      const user = this.props.location.user;
+      this.setState({
+        user: user,
+        multiFactorAuths: [],
+        consents: [],
+        loading: false,
+      });
+
+      this.getApplicationsByOrganization(this.state.organizationName);
+      return;
+    }
+
     UserBackend.getUser(this.state.organizationName, this.state.userName)
       .then((res) => {
         if (res.data === null) {
@@ -165,10 +178,41 @@ class UserEditPage extends React.Component {
             }
           }
         }
+
+        if (this.state.mode === "add") {
+          this.getSignupApplication();
+        }
+      });
+  }
+
+  // the form layout is derived from the application's organization, in "add" mode the user doesn't
+  // exist yet so its application has to be resolved from the organization's applications instead
+  getSignupApplication() {
+    const applicationName = this.state.user?.signupApplication;
+    if (!applicationName) {
+      return;
+    }
+
+    ApplicationBackend.getApplication("admin", applicationName)
+      .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
+        this.setState({
+          menuMode: res.data?.organizationObj?.accountMenu ?? "Horizontal",
+          application: res.data,
+        });
       });
   }
 
   getUserApplication() {
+    if (this.state.mode === "add") {
+      // the application is loaded by getApplicationsByOrganization() in "add" mode
+      return;
+    }
+
     ApplicationBackend.getUserApplication(this.state.organizationName, this.state.userName)
       .then((res) => {
         if (res.status === "error") {
@@ -480,7 +524,13 @@ class UserEditPage extends React.Component {
           </Col>
           <Col span={22} >
             {
-              (this.state.user.name === this.state.userName) ? (
+              // PasswordModal calls the set-password API, which needs an existing user, so in
+              // "add" mode the initial password is edited directly on the user to be created
+              (this.state.mode === "add") ? (
+                <Input.Password value={this.state.user.password} disabled={disabled} onChange={e => {
+                  this.updateUserField("password", e.target.value);
+                }} />
+              ) : (this.state.user.name === this.state.userName) ? (
                 <PasswordModal user={this.state.user} userName={this.state.userName} organization={this.getUserOrganization()} account={this.props.account} disabled={disabled} />
               ) : (
                 <Tooltip placement={"topLeft"} title={i18next.t("user:You have changed the username, please save your change first before modifying the password")}>
@@ -706,7 +756,8 @@ class UserEditPage extends React.Component {
           <Col span={22} >
             <Button
               type="primary"
-              disabled={isVerified || disabled}
+              // the verification result is written back to the saved user, so it needs the user to exist
+              disabled={isVerified || disabled || this.state.mode === "add"}
               onClick={() => this.handleVerifyIdentification()}
             >
               {isVerified ? i18next.t("user:Verified") : i18next.t("user:Verify Identity")}
@@ -897,6 +948,19 @@ class UserEditPage extends React.Component {
           </Col>
         </Row>
       );
+    } else if (accountItem.name === "UID number") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:UID number"), i18next.t("general:UID number - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <InputNumber min={0} value={this.state.user.uidNumber} disabled={disabled} onChange={value => {
+              this.updateUserField("uidNumber", value ?? 0);
+            }} />
+          </Col>
+        </Row>
+      );
     } else if (accountItem.name === "Karma") {
       return (
         <Row style={{marginTop: "20px"}} >
@@ -989,7 +1053,8 @@ class UserEditPage extends React.Component {
       );
     } else if (accountItem.name === "3rd-party logins") {
       return (
-        !this.isSelfOrAdmin() ? null : (
+        // linking and unlinking go through the saved user, so they need the user to exist
+        (!this.isSelfOrAdmin() || this.state.mode === "add") ? null : (
           <Row style={{marginTop: "20px"}} >
             <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
               {Setting.getLabel(i18next.t("user:3rd-party logins"), i18next.t("user:3rd-party logins - Tooltip"))} :
@@ -1106,7 +1171,8 @@ class UserEditPage extends React.Component {
       );
     } else if (accountItem.name === "Multi-factor authentication") {
       return (
-        !this.isSelfOrAdmin() ? null : (
+        // the MFA items are read from and written to the saved user, so they need the user to exist
+        (!this.isSelfOrAdmin() || this.state.mode === "add") ? null : (
           <Row style={{marginTop: "20px"}} >
             <Col style={{marginTop: "5px"}} span={Setting.isMobile() ? 22 : 2}>
               {Setting.getLabel(i18next.t("mfa:Multi-factor authentication"), i18next.t("mfa:Multi-factor authentication - Tooltip "))} :
@@ -1333,7 +1399,9 @@ class UserEditPage extends React.Component {
             </Col>
         }
         {
-          (this.props.account === null) ? null : (
+          // the upload creates a resource owned by the user and then writes the URL back to it,
+          // so it can only be done after the user is created
+          (this.props.account === null || this.state.mode === "add") ? null : (
             <CropperDivModal disabled={disabled} tag={tag} setTitle={set} buttonText={`${title}...`} title={title} user={this.state.user} organization={this.getUserOrganization()} />
           )
         }
@@ -1532,13 +1600,23 @@ class UserEditPage extends React.Component {
 
   submitUserEdit(exitAfterSave) {
     const user = Setting.deepCopy(this.state.user);
-    UserBackend.updateUser(this.state.organizationName, this.state.userName, user)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? UserBackend.addUser(user)
+      : UserBackend.updateUser(this.state.organizationName, this.state.userName, user);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             organizationName: this.state.user.owner,
             userName: this.state.user.name,
+            mode: "edit",
+          }, () => {
+            if (isAdd && !exitAfterSave) {
+              // the user exists now, reload it so that its avatar, MFA and consents are available
+              this.getUser();
+            }
           });
           if (exitAfterSave) {
             if (this.state.returnUrl) {
@@ -1562,8 +1640,10 @@ class UserEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateUserField("owner", this.state.organizationName);
-          this.updateUserField("name", this.state.userName);
+          if (!isAdd) {
+            this.updateUserField("owner", this.state.organizationName);
+            this.updateUserField("name", this.state.userName);
+          }
         }
       })
       .catch(error => {
@@ -1572,22 +1652,12 @@ class UserEditPage extends React.Component {
   }
 
   deleteUser() {
-    UserBackend.deleteUser(Setting.getDeleteObj(this.state.user, this.state.organizationName, this.state.userName))
-      .then((res) => {
-        if (res.status === "ok") {
-          const userListUrl = sessionStorage.getItem("userListUrl");
-          if (userListUrl !== null) {
-            this.props.history.push(userListUrl);
-          } else {
-            this.props.history.push("/users");
-          }
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    const userListUrl = sessionStorage.getItem("userListUrl");
+    if (userListUrl !== null) {
+      this.props.history.push(userListUrl);
+    } else {
+      this.props.history.push("/users");
+    }
   }
 
   render() {

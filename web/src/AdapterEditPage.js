@@ -41,6 +41,13 @@ class AdapterEditPage extends React.Component {
   }
 
   getAdapter() {
+    if (this.state.mode === "add" && this.props.location.adapter) {
+      this.setState({
+        adapter: this.props.location.adapter,
+      });
+      return;
+    }
+
     AdapterBackend.getAdapter(this.state.organizationName, this.state.adapterName)
       .then((res) => {
         if (res.status === "ok") {
@@ -253,7 +260,8 @@ class AdapterEditPage extends React.Component {
             {Setting.getLabel(i18next.t("provider:DB test"), i18next.t("provider:DB test - Tooltip"))} :
           </Col>
           <Col span={2} >
-            <Button disabled={this.state.organizationName !== this.state.adapter.owner} type={"primary"} onClick={() => {
+            {/* the test goes through the saved adapter record, so it is not available before the adapter is created */}
+            <Button disabled={this.state.mode === "add" || this.state.organizationName !== this.state.adapter.owner} type={"primary"} onClick={() => {
               AdapterBackend.getPolicies("", "", `${this.state.adapter.owner}/${this.state.adapter.name}`)
                 .then((res) => {
                   if (res.status === "ok") {
@@ -275,13 +283,18 @@ class AdapterEditPage extends React.Component {
 
   submitAdapterEdit(exitAfterSave) {
     const adapter = Setting.deepCopy(this.state.adapter);
-    AdapterBackend.updateAdapter(this.state.organizationName, this.state.adapterName, adapter)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? AdapterBackend.addAdapter(adapter)
+      : AdapterBackend.updateAdapter(this.state.organizationName, this.state.adapterName, adapter);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             organizationName: this.state.adapter.owner,
             adapterName: this.state.adapter.name,
+            mode: "edit",
           });
 
           if (exitAfterSave) {
@@ -291,7 +304,9 @@ class AdapterEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateAdapterField("name", this.state.adapterName);
+          if (!isAdd) {
+            this.updateAdapterField("name", this.state.adapterName);
+          }
         }
       })
       .catch(error => {
@@ -300,17 +315,7 @@ class AdapterEditPage extends React.Component {
   }
 
   deleteAdapter() {
-    AdapterBackend.deleteAdapter(Setting.getDeleteObj(this.state.adapter, this.state.organizationName, this.state.adapterName))
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/adapters");
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/adapters");
   }
 
   render() {
