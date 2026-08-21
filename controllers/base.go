@@ -93,8 +93,8 @@ func (c *ApiController) requireOrganizationPermission(organization string) bool 
 func (c *ApiController) isGlobalAdmin() (bool, *object.User) {
 	username := c.GetSessionUsername()
 	if object.IsAppUser(username) {
-		// e.g., "app/app-casnode"
-		return true, nil
+		// Only built-in org apps have global-admin access; non-built-in apps are org-scoped.
+		return object.IsBuiltInAppUser(username), nil
 	}
 
 	user := c.getCurrentUser()
