@@ -159,7 +159,7 @@ func (c *McpController) GetClaimsFromToken() *object.Claims {
 		return nil
 	}
 
-	application, err := object.GetApplication(token.Application)
+	application, err := object.GetApplication(util.GetId(token.Owner, token.Application))
 	if err != nil || application == nil {
 		return nil
 	}
