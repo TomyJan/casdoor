@@ -86,8 +86,7 @@ func (c *McpController) isGlobalAdmin() (bool, *object.User) {
 	username := c.GetSessionUsername()
 
 	if object.IsAppUser(username) {
-		// e.g., "app/app-casnode"
-		return true, nil
+		return object.IsBuiltInAppUser(username), nil
 	}
 
 	user := c.getCurrentUser()
