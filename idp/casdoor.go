@@ -146,10 +146,11 @@ func (idp *CasdoorIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error
 		return nil, fmt.Errorf("err: %s", cdUserinfo.Msg)
 	}
 
+	idStr := oauthStableID(cdUserinfo.Id, "", "", cdUserinfo.Name, cdUserinfo.Email)
 	userInfo := &UserInfo{
-		Id:          cdUserinfo.Id,
-		Username:    cdUserinfo.Name,
-		DisplayName: cdUserinfo.DisplayName,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(cdUserinfo.Name, cdUserinfo.Id, "", "", cdUserinfo.Email),
+		DisplayName: displayNameFromNickname("", cdUserinfo.DisplayName, cdUserinfo.Name, cdUserinfo.Email, idStr),
 		Email:       cdUserinfo.Email,
 		AvatarUrl:   cdUserinfo.AvatarUrl,
 	}
