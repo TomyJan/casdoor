@@ -115,6 +115,9 @@ func (c *ApiController) Signup() {
 		return
 	}
 
+	// a value posted for a hidden signup item did not come from the signup page
+	application.ClearHiddenSignupFields(&authForm)
+
 	clientIp := util.GetClientIpFromRequest(c.Ctx.Request)
 	err = object.CheckEntryIp(clientIp, nil, application, organization, c.GetAcceptLanguage())
 	if err != nil {
@@ -168,7 +171,7 @@ func (c *ApiController) Signup() {
 
 	userEmailVerified := false
 
-	if application.IsSignupItemVisible("Email") && application.GetSignupItemRule("Email") != "No verification" && authForm.Email != "" {
+	if application.IsSignupFieldVisible("Email") && application.GetSignupFieldRule("Email") != "No verification" && authForm.Email != "" {
 		var checkResult *object.VerifyResult
 		checkResult, err = object.CheckVerificationCode(authForm.Email, authForm.EmailCode, c.GetAcceptLanguage())
 		if err != nil {
@@ -184,7 +187,7 @@ func (c *ApiController) Signup() {
 	}
 
 	var checkPhone string
-	if application.IsSignupItemVisible("Phone") && application.GetSignupItemRule("Phone") != "No verification" && authForm.Phone != "" {
+	if application.IsSignupFieldVisible("Phone") && application.GetSignupFieldRule("Phone") != "No verification" && authForm.Phone != "" {
 		checkPhone, _ = util.GetE164Number(authForm.Phone, authForm.CountryCode)
 
 		var checkResult *object.VerifyResult
@@ -207,7 +210,7 @@ func (c *ApiController) Signup() {
 
 	username := authForm.Username
 	if !application.IsSignupItemVisible("Username") {
-		if organization.UseEmailAsUsername && application.IsSignupItemVisible("Email") {
+		if organization.UseEmailAsUsername && application.IsSignupFieldVisible("Email") {
 			username = authForm.Email
 		} else {
 			username = id
@@ -368,7 +371,7 @@ func (c *ApiController) Signup() {
 			return
 		}
 
-		code, err := object.GetOAuthCode(userId, clientId, "", "password", responseType, redirectUri, scope, state, nonce, codeChallenge, "", c.Ctx.Request.Host, c.GetAcceptLanguage())
+		code, err := object.GetOAuthCode(userId, clientId, "", "password", responseType, redirectUri, scope, state, nonce, codeChallenge, "", c.Ctx.Input.CruSession.SessionID(context.Background()), c.Ctx.Request.Host, c.GetAcceptLanguage())
 		if err != nil {
 			c.ResponseError(err.Error(), nil)
 			return

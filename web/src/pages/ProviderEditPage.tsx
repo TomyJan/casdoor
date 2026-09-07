@@ -8,6 +8,7 @@ import {Switch} from "@/components/ui/switch";
 import {Textarea} from "@/components/ui/textarea";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
 import {Loading} from "@/components/common/Loading";
+import {CountryCodeSelect} from "@/components/common/CountryCodeSelect";
 import {CodeEditor} from "@/components/common/CodeEditor";
 import {MultiSelect} from "@/components/common/MultiSelect";
 import {SearchableSelect} from "@/components/common/SearchableSelect";
@@ -389,6 +390,7 @@ export default function ProviderEditPage() {
 
   const [requestUrl, setRequestUrl] = React.useState("");
   const [metadataLoading, setMetadataLoading] = React.useState(false);
+  const [discoveryLoading, setDiscoveryLoading] = React.useState(false);
 
   const [scanLoading, setScanLoading] = React.useState(false);
   const [scanResult, setScanResult] = React.useState<any>(null);
@@ -507,11 +509,11 @@ export default function ProviderEditPage() {
     const requiredKeys = ["id", "username", "displayName"];
     if (provider.type === "Custom HTTP Email") {
       if (value === "") {
-        Setting.showMessage("error", i18next.t("provider:This field is required"));
+        Setting.showMessage("error", i18next.t("general:This field is required"));
         return;
       }
     } else if (value === "" && requiredKeys.includes(key)) {
-      Setting.showMessage("error", i18next.t("provider:This field is required"));
+      Setting.showMessage("error", i18next.t("general:This field is required"));
       return;
     }
 
@@ -594,6 +596,33 @@ export default function ProviderEditPage() {
       })
       .finally(() => {
         setMetadataLoading(false);
+      });
+  };
+
+  const fetchOidcDiscovery = () => {
+    setDiscoveryLoading(true);
+    ProviderBackend.getIdpDiscovery(provider.domain ?? "")
+      .then((res: any) => {
+        if (res.status !== "ok") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
+        const discovery = res.data;
+        patchProvider({
+          domain: discovery.issuer || provider.domain,
+          customAuthUrl: discovery.authorization_endpoint ?? "",
+          customTokenUrl: discovery.token_endpoint ?? "",
+          customUserInfoUrl: discovery.userinfo_endpoint ?? "",
+          customLogoutUrl: discovery.end_session_endpoint ?? "",
+        });
+        Setting.showMessage("success", i18next.t("general:Successfully added"));
+      })
+      .catch((err: any) => {
+        Setting.showMessage("error", err.message);
+      })
+      .finally(() => {
+        setDiscoveryLoading(false);
       });
   };
 
@@ -719,6 +748,8 @@ export default function ProviderEditPage() {
     const patch: Record<string, any> = {type: value};
     if (value === "Local File System") {
       patch.domain = Setting.getFullServerUrl();
+    } else if (value === "OIDC") {
+      patch.scopes = "openid profile email";
     } else if (value.startsWith("Custom") && provider.category === "OAuth") {
       patch.customAuthUrl = "https://door.casdoor.com/login/oauth/authorize";
       patch.scopes = "openid profile email";
@@ -912,7 +943,17 @@ export default function ProviderEditPage() {
           </FormRow>
         </React.Fragment>
       ) : null}
-      {String(provider.type ?? "").startsWith("Custom") ? (
+      {provider.type === "OIDC" ? (
+        <FormRow labelKey="provider:Issuer URL">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="w-96 max-w-full" value={provider.domain ?? ""} onChange={(e) => updateProviderField("domain", e.target.value)} />
+            <Button loading={discoveryLoading} disabled={!provider.domain} onClick={fetchOidcDiscovery}>
+              {i18next.t("general:Request")}
+            </Button>
+          </div>
+        </FormRow>
+      ) : null}
+      {Setting.isCustomOAuthType(provider.type) ? (
         <React.Fragment>
           <FormRow labelKey="provider:Auth URL">
             <Input value={provider.customAuthUrl ?? ""} onChange={(e) => updateProviderField("customAuthUrl", e.target.value)} />
@@ -1116,14 +1157,10 @@ export default function ProviderEditPage() {
       <FormRow labelKey="provider:SMS Test">
         <div className="flex flex-wrap items-center gap-2">
           <div className="w-32 shrink-0">
-            <SearchableSelect
+            <CountryCodeSelect
               value={provider.content ?? ""}
               onChange={(v) => updateProviderField("content", v)}
-              options={Setting.getCountryCodeData(account?.organization?.countryCodes).map((country: any) => ({
-                value: country.code,
-                label: `+${country.phone}`,
-                keywords: `${country.name} ${country.code} ${country.phone}`,
-              }))}
+              countryCodes={account?.organization?.countryCodes}
             />
           </div>
           <Input
@@ -1564,6 +1601,7 @@ export default function ProviderEditPage() {
 
   return (
     <EditPageShell
+      grid
       title={mode === "add" ? i18next.t("provider:New Provider") : i18next.t("provider:Edit Provider")}
       mode={mode}
       backTo="/providers"

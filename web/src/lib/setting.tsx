@@ -24,7 +24,17 @@ import copy from "copy-to-clipboard";
 import {toast} from "sonner";
 import * as phoneNumber from "libphonenumber-js";
 import countriesLib from "i18n-iso-countries";
+import deCountries from "i18n-iso-countries/langs/de.json";
 import enCountries from "i18n-iso-countries/langs/en.json";
+import esCountries from "i18n-iso-countries/langs/es.json";
+import frCountries from "i18n-iso-countries/langs/fr.json";
+import jaCountries from "i18n-iso-countries/langs/ja.json";
+import plCountries from "i18n-iso-countries/langs/pl.json";
+import ptCountries from "i18n-iso-countries/langs/pt.json";
+import trCountries from "i18n-iso-countries/langs/tr.json";
+import ukCountries from "i18n-iso-countries/langs/uk.json";
+import viCountries from "i18n-iso-countries/langs/vi.json";
+import zhCountries from "i18n-iso-countries/langs/zh.json";
 import * as Conf from "@/Conf";
 import {authConfig} from "@/auth/Auth";
 import "@/i18n";
@@ -70,6 +80,21 @@ export function getFullServerUrl() {
   return fullServerUrl;
 }
 
+// An OAuth redirect URI on Casdoor's own origin belongs to Casdoor itself: the whole
+// origin serves the frontend, so no client application can live there. Such a request
+// is signed in directly instead of being answered with a code nobody can collect.
+export function isSelfRedirectUri(redirectUri) {
+  if (!redirectUri) {
+    return false;
+  }
+
+  try {
+    return new URL(redirectUri).origin === getFullServerUrl();
+  } catch {
+    return false;
+  }
+}
+
 export function isMobile() {
   if (typeof window === "undefined") {
     return false;
@@ -103,12 +128,20 @@ export function getNameAtLeast(s) {
   return s.padEnd(6, " ");
 }
 
-let countriesInited = false;
+// only the languages that ship a UI bundle, see bundledLanguages in src/i18n.ts
+const countryLocales: Record<string, any> = {
+  de: deCountries, en: enCountries, es: esCountries, fr: frCountries, ja: jaCountries, pl: plCountries,
+  pt: ptCountries, tr: trCountries, uk: ukCountries, vi: viCountries, zh: zhCountries,
+};
+
+const registeredCountryLocales = new Set<string>();
 
 export function initCountries() {
-  if (!countriesInited) {
-    countriesLib.registerLocale(enCountries as any);
-    countriesInited = true;
+  for (const locale of ["en", getLanguage()]) {
+    if (!registeredCountryLocales.has(locale) && countryLocales[locale] !== undefined) {
+      countriesLib.registerLocale(countryLocales[locale]);
+      registeredCountryLocales.add(locale);
+    }
   }
   return countriesLib;
 }
@@ -663,7 +696,7 @@ export const UserFields = ["owner", "name", "password", "display_name", "id", "t
   "eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru",
   "meetup", "microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify",
   "soundcloud", "spotify", "strava", "stripe", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk",
-  "wepay", "xero", "yahoo", "yammer", "yandex", "zoom", "metamask", "web3onboard", "custom", "webauthnCredentials",
+  "wepay", "xero", "yahoo", "yammer", "yandex", "zoom", "metamask", "web3onboard", "oidc", "custom", "webauthnCredentials",
   "preferred_mfa_type", "recovery_codes", "totp_secret", "mfa_phone_enabled", "mfa_email_enabled", "invitation",
   "invitation_code", "face_ids", "ldap", "properties", "roles", "permissions", "groups", "last_change_password_time",
   "last_signin_wrong_time", "signin_wrong_times", "managedAccounts", "mfaAccounts", "mfaItems", "need_update_password",
@@ -846,9 +879,11 @@ export function getCountryCodeData(countryCodes: any = phoneNumber.getCountries(
   if (countryCodes?.includes("All")) {
     countryCodes = phoneNumber.getCountries();
   }
+  const countries = initCountries() as any;
   return countryCodes?.map((countryCode) => {
     if (phoneNumber.isSupportedCountry(countryCode)) {
-      const name = (initCountries() as any).getName(countryCode, getLanguage());
+      // fall back to English so an unregistered locale never empties the list
+      const name = countries.getName(countryCode, getLanguage()) || countries.getName(countryCode, "en");
       return {
         code: countryCode,
         name: name || "",
@@ -857,6 +892,25 @@ export function getCountryCodeData(countryCodes: any = phoneNumber.getCountries(
     }
   }).filter(item => item && item.name !== "")
     .sort((a, b) => Number(a.phone) - Number(b.phone));
+}
+
+// the trigger only has room for the calling code, but many countries share one
+// (+1 alone covers 20+), so the list itself has to show the country
+export function getCountryCodeOptions(countryCodes: any = undefined): any[] {
+  return getCountryCodeData(countryCodes).map((country: any) => ({
+    value: country.code,
+    label: `+${country.phone}`,
+    itemLabel: (
+      <span className="flex w-full items-center justify-between gap-2">
+        <span className="flex items-center truncate">
+          {getCountryImage(country)}
+          {country.name}
+        </span>
+        <span className="shrink-0 text-muted-foreground">{`+${country.phone}`}</span>
+      </span>
+    ),
+    keywords: `${country.name} ${country.code} ${country.phone}`,
+  }));
 }
 
 export function isProviderVisible(providerItem) {
@@ -1196,12 +1250,12 @@ export function trim(str, ch) {
   return (start > 0 || end < str.length) ? str.substring(start, end) : str;
 }
 
+// A custom CSS value may or may not already be wrapped in <style> tags, the editor accepts both.
 export function getStyleInnerCss(css) {
   if (!css) {
     return css;
   }
-  const match = css.match(/^\s*<style[^>]*>([\s\S]*?)<\/style>\s*$/i);
-  return match ? match[1] : css;
+  return css.replace(/<\/?style[^>]*>/gi, "");
 }
 
 export function getShortText(s, maxLength = 35) {
@@ -1309,12 +1363,16 @@ export function getAcceptLanguage() {
 }
 
 
+export function isCustomOAuthType(type) {
+  return typeof type === "string" && (type.startsWith("Custom") || type === "OIDC");
+}
+
 export function getProviderLogoURL(provider) {
-  if (provider.type.startsWith("Custom") && provider.customLogo) {
+  if (isCustomOAuthType(provider.type) && provider.customLogo) {
     return provider.customLogo;
   }
   if (provider.category === "OAuth") {
-    const type = provider.type.startsWith("Custom") ? "Custom" : provider.type;
+    const type = isCustomOAuthType(provider.type) ? "Custom" : provider.type;
     return `${StaticBaseUrl}/img/social_${type.toLowerCase()}.png`;
   } else {
     const info = OtherProviderInfo[provider.category][provider.type];
@@ -1407,6 +1465,7 @@ export function getProviderTypeOptions(category) {
         {id: "Yammer", name: "Yammer"},
         {id: "Yandex", name: "Yandex"},
         {id: "Zoom", name: "Zoom"},
+        {id: "OIDC", name: "OIDC"},
         {id: "Custom", name: "Custom"},
         {id: "Custom2", name: "Custom2"},
         {id: "Custom3", name: "Custom3"},
@@ -1617,6 +1676,34 @@ export function getCaptchaRule(application) {
   }
 
   return CaptchaRule.Never;
+}
+
+export function getSigninItem(application, name) {
+  return application?.signinItems?.find(signinItem => signinItem.name === name);
+}
+
+// An item the application does not list at all keeps its default place on the page.
+export function isSigninItemVisible(application, name) {
+  return getSigninItem(application, name)?.visible !== false;
+}
+
+// "Text 1".."Text 5" and the items added by the admin carry raw HTML instead of a widget.
+export function isCustomFormItem(item) {
+  return item?.isCustom === true || `${item?.name ?? ""}`.startsWith("Text ");
+}
+
+// An unset Providers rule means "small" next to a credential form and "big" without one.
+export function getProvidersRule(application, item) {
+  if (item?.rule && item.rule !== "None") {
+    return item.rule;
+  }
+  const showForm = isPasswordEnabled(application) || isCodeSigninEnabled(application) ||
+    isWebAuthnEnabled(application) || isLdapEnabled(application);
+  return showForm ? "small" : "big";
+}
+
+export function getAutoSigninDefaultValue(application) {
+  return getSigninItem(application, "Forgot password?")?.rule !== "Auto sign in - False";
 }
 
 export function isInlineCaptchaEnabled(application) {
@@ -2363,6 +2450,49 @@ export function createFormAndSubmit(url, params) {
   document.body.appendChild(form);
   form.submit();
   setTimeout(() => {form.remove();}, 500);
+}
+
+/** The "Forgot password?" target, which an application may override with its own `forgetUrl`. */
+export function getForgetLink(application) {
+  if (!application) {
+    return null;
+  } else if (authConfig.appName === application.name) {
+    return "/forget";
+  } else if (!application.forgetUrl) {
+    return `/forget/${application.name}`;
+  }
+  return application.forgetUrl;
+}
+
+/** The OAuth params have to survive the hop, or the signup cannot hand back a code. */
+export function getSignupLink(application) {
+  if (!application) {
+    return null;
+  }
+
+  let url;
+  if (window.location.pathname.includes("/login/oauth/authorize")) {
+    url = window.location.pathname.replace("/login/oauth/authorize", "/signup/oauth/authorize");
+  } else if (authConfig.appName === application.name) {
+    url = "/signup";
+  } else if (!application.signupUrl) {
+    url = application.isShared
+      ? `/signup/${application.name}-org-${application.organization}`
+      : `/signup/${application.name}`;
+  } else {
+    url = application.signupUrl;
+  }
+  return url + window.location.search;
+}
+
+/** The sign-in URL carries the OAuth params, so remember it before leaving for the signup or forget page. */
+export function storeSigninUrl() {
+  sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+}
+
+export function getStoredSigninUrl() {
+  const signinUrl = sessionStorage.getItem("signinUrl");
+  return signinUrl?.startsWith("/") ? signinUrl : "";
 }
 
 export function getLoginLink(application) {

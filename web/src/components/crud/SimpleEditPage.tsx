@@ -11,7 +11,7 @@ import {SearchableSelect, type SearchableOption} from "@/components/common/Searc
 import {TagsInput} from "@/components/common/TagsInput";
 import {CodeEditor} from "@/components/common/CodeEditor";
 import {EditPageShell} from "@/components/crud/EditPageShell";
-import {FormRow} from "@/components/crud/FormRow";
+import {FormGrid, FormRow} from "@/components/crud/FormRow";
 import {useEditRecord} from "@/hooks/use-edit-record";
 import {getModeTitleKey, submitEdit, type CasdoorResponse, type EditMode} from "@/lib/crud";
 import * as Setting from "@/lib/setting";
@@ -30,6 +30,14 @@ interface BaseField {
   when?: (ctx: Ctx) => boolean;
   disabled?: (ctx: Ctx) => boolean;
   block?: boolean;
+  /** the backend rejects an empty value, so say so before the round trip */
+  required?: boolean;
+  /**
+   * Returns a message when the value is not acceptable, or undefined when it is.
+   * Only for what the frontend can decide on its own — the authority is still the
+   * Go backend, and its rejection still arrives as a message on save.
+   */
+  validate?: (value: any, ctx: Ctx) => string | undefined;
   /**
    * Runs instead of the plain `updateField` when the control changes, for the
    * fields that have to reset or derive their neighbours (the syncer type
@@ -40,12 +48,17 @@ interface BaseField {
 
 export type EditField =
   | (BaseField & {type: "text" | "password" | "email" | "url"})
-  | (BaseField & {type: "number"; step?: string; suffix?: React.ReactNode})
+  | (BaseField & {type: "number"; step?: string; min?: number; max?: number; suffix?: React.ReactNode})
   | (BaseField & {type: "textarea"; rows?: number; placeholder?: string})
   | (BaseField & {type: "switch"})
   | (BaseField & {type: "tags"; placeholder?: string})
   | (BaseField & {type: "select"; options: (ctx: Ctx) => SearchableOption[]})
-  | (BaseField & {type: "multiselect"; options: (ctx: Ctx) => MultiSelectOption[]; creatable?: boolean})
+  | (BaseField & {
+    type: "multiselect";
+    options: (ctx: Ctx) => MultiSelectOption[];
+    /** a predicate when only some records may invent their own values */
+    creatable?: boolean | ((ctx: Ctx) => boolean);
+  })
   | (BaseField & {type: "code"; language?: string; height?: number})
   | (BaseField & {type: "custom"; render: (ctx: Ctx, update: (field: string, value: any) => void) => React.ReactNode});
 
@@ -60,6 +73,12 @@ export interface SimpleEditPageProps {
   deps?: React.DependencyList;
   /** where to go after "Save" (not "Save & Exit") when the name changed */
   editUrl?: (record: any) => string;
+  /**
+   * Fields the server decided while adding the record, as a patch to apply to it.
+   * Only for what a reload cannot reach: a record the server renamed is no longer
+   * where the page would look for it.
+   */
+  onAdded?: (record: any, res: CasdoorResponse) => Record<string, any> | undefined;
   transform?: (record: any) => any;
   /**
    * Last chance to adjust the payload before it is sent. Returning `null` aborts
@@ -84,6 +103,7 @@ export function SimpleEditPage({
   update,
   deps = [],
   editUrl,
+  onAdded,
   transform,
   beforeSave,
   extraActions,
@@ -91,7 +111,14 @@ export function SimpleEditPage({
 }: SimpleEditPageProps) {
   const navigate = useNavigate();
   const [saving, setSaving] = React.useState(false);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
   const {record, updateField, updateFields, loading, denied, mode, setMode, reload} = useEditRecord<any>({fetch, transform, deps});
+  const savedIdentity = React.useRef<{owner: any; name: any} | null>(null);
+
+  React.useEffect(() => {
+    savedIdentity.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 
   if (denied) {
     return <UnauthorizedPage />;
@@ -103,26 +130,80 @@ export function SimpleEditPage({
 
   const ctx: Ctx = {record, mode, reload};
 
+  // the identity the record was last loaded or saved under: a rejected rename has
+  // to be rolled back, or the next save would address an object that never existed
+  if (savedIdentity.current === null && mode !== "add") {
+    savedIdentity.current = {owner: record.owner, name: record.name};
+  }
+
+  const isEmpty = (value: any) =>
+    value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+
+  /** a hidden or locked row is not the reader's to fix, so it is not checked */
+  const applies = (field: EditField) =>
+    (!field.when || field.when(ctx)) && mode !== "view" && !(field.disabled ? field.disabled(ctx) : false);
+
+  const checkField = (field: EditField, value: any): string | undefined => {
+    if (!applies(field)) {
+      return undefined;
+    }
+    if (field.required && isEmpty(value)) {
+      return i18next.t("general:This field is required");
+    }
+    return field.validate?.(value, ctx);
+  };
+
   const save = async(exitAfterSave: boolean) => {
+    const found: Record<string, string> = {};
+    fields.forEach((field) => {
+      const message = checkField(field, record[field.name]);
+      if (message) {
+        found[field.name] = message;
+      }
+    });
+    if (Object.keys(found).length > 0) {
+      setErrors(found);
+      // every offending row is marked; the page scrolls to the first one
+      document.querySelector(`[data-field="${Object.keys(found)[0]}"]`)?.scrollIntoView({block: "center"});
+      return;
+    }
+    setErrors({});
+
     const payload = beforeSave ? beforeSave(Setting.deepCopy(record)) : Setting.deepCopy(record);
     if (payload === null) {
       return;
     }
+    const isAdd = mode === "add";
     setSaving(true);
     await submitEdit({
       mode,
       record: payload,
       add,
       update,
-      onSaved: () => {
+      onSaved: (saved, res) => {
         setMode("edit");
+        const patch = isAdd ? onAdded?.(saved, res) : undefined;
+        if (patch) {
+          updateFields(patch);
+        }
         if (exitAfterSave) {
           navigate(backTo);
-        } else if (editUrl) {
-          const next = editUrl(record);
-          if (next !== window.location.pathname) {
-            navigate(next, {replace: true});
-          }
+          return;
+        }
+        const next = editUrl ? editUrl({...record, ...patch}) : null;
+        if (next && next !== window.location.pathname) {
+          navigate(next, {replace: true});
+        } else if (isAdd) {
+          // the server fills in what the form could not know: generated ids and
+          // secrets, computed prices, defaults taken from the organization
+          reload();
+        }
+        savedIdentity.current = {owner: record.owner, name: record.name};
+      },
+      onFailed: () => {
+        // the antd pages put the name back when the backend rejects the save
+        if (!isAdd && savedIdentity.current) {
+          updateFields(savedIdentity.current);
         }
       },
     });
@@ -136,8 +217,21 @@ export function SimpleEditPage({
     const value = record[field.name];
     // a read-only page locks the whole form, whatever each field asked for
     const disabled = mode === "view" || (field.disabled ? field.disabled(ctx) : false);
-    const set = (next: any) =>
-      field.onChange ? field.onChange(next, ctx, updateFields) : updateField(field.name, next);
+    const set = (next: any) => {
+      if (errors[field.name]) {
+        const message = checkField(field, next);
+        setErrors((previous) => {
+          const rest = {...previous};
+          delete rest[field.name];
+          return message ? {...rest, [field.name]: message} : rest;
+        });
+      }
+      if (field.onChange) {
+        field.onChange(next, ctx, updateFields);
+      } else {
+        updateField(field.name, next);
+      }
+    };
 
     let control: React.ReactNode;
     switch (field.type) {
@@ -158,6 +252,8 @@ export function SimpleEditPage({
           <Input
             type="number"
             step={field.step}
+            min={field.min}
+            max={field.max}
             disabled={disabled}
             value={value ?? 0}
             onChange={(e) => set(field.step ? Number(e.target.value) : Setting.myParseInt(e.target.value))}
@@ -196,7 +292,7 @@ export function SimpleEditPage({
       control = (
         <MultiSelect
           disabled={disabled}
-          creatable={field.creatable}
+          creatable={typeof field.creatable === "function" ? field.creatable(ctx) : field.creatable}
           value={value ?? []}
           onChange={(v) => set(v)}
           options={field.options(ctx)}
@@ -230,11 +326,14 @@ export function SimpleEditPage({
     return (
       <FormRow
         key={field.name}
+        className="scroll-mt-24"
         labelKey={typeof field.labelKey === "function" ? field.labelKey(ctx) : field.labelKey}
         label={typeof field.label === "function" ? field.label(ctx) : field.label}
         block={field.block || field.type === "code"}
+        required={field.required && applies(field)}
+        error={errors[field.name]}
       >
-        {control}
+        <div data-field={field.name}>{control}</div>
       </FormRow>
     );
   };
@@ -248,7 +347,7 @@ export function SimpleEditPage({
       saving={saving}
       extraActions={extraActions?.(ctx)}
     >
-      {fields.map(renderField)}
+      <FormGrid>{fields.map(renderField)}</FormGrid>
       {children?.(ctx, updateField)}
     </EditPageShell>
   );

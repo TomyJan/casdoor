@@ -1,4 +1,3 @@
-import * as React from "react";
 import {Languages} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {
@@ -7,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {useLanguage} from "@/hooks/use-language";
 import * as Setting from "@/lib/setting";
 import {cn} from "@/lib/utils";
 
@@ -14,11 +14,12 @@ interface LanguageSelectProps {
   /** restrict the list, as the organization setting does */
   languages?: string[];
   className?: string;
+  /** the signup page saves the picked language on the new user */
+  onLanguageChange?: (key: string) => void;
 }
 
-export function LanguageSelect({languages, className}: LanguageSelectProps) {
-  const [, force] = React.useReducer((x) => x + 1, 0);
-  const current = Setting.getLanguage();
+export function LanguageSelect({languages, className, onLanguageChange}: LanguageSelectProps) {
+  const current = useLanguage();
 
   const items = (Setting.Countries as any[]).filter(
     (country) => !languages || languages.length === 0 || languages.includes(country.key),
@@ -42,7 +43,7 @@ export function LanguageSelect({languages, className}: LanguageSelectProps) {
             className={cn(current === country.key && "font-semibold")}
             onSelect={() => {
               Setting.setLanguage(country.key);
-              force();
+              onLanguageChange?.(country.key);
             }}
           >
             <img

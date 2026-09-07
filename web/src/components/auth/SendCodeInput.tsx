@@ -7,6 +7,7 @@ import {CaptchaModal} from "@/components/common/CaptchaModal";
 import * as AuthBackend from "@/backend/AuthBackend";
 import * as UserBackend from "@/backend/UserBackend";
 import * as Setting from "@/lib/setting";
+import {cn} from "@/lib/utils";
 
 export interface CaptchaValues {
   captchaType?: string;
@@ -35,6 +36,9 @@ interface SendCodeInputProps {
   captchaValue?: CaptchaValues;
   useInlineCaptcha?: boolean;
   refreshCaptcha?: () => void;
+  /** the signin/signup item can override the field placeholder and add its own class */
+  placeholder?: string;
+  className?: string;
 }
 
 /**
@@ -57,6 +61,8 @@ export function SendCodeInput({
   captchaValue,
   useInlineCaptcha,
   refreshCaptcha,
+  placeholder,
+  className,
 }: SendCodeInputProps) {
   const [seconds, setSeconds] = React.useState(0);
   const [sending, setSending] = React.useState(false);
@@ -90,15 +96,12 @@ export function SendCodeInput({
       applicationId,
       checkUser ?? "",
     )
-      .then((res: any) => {
-        if (res.status === "ok") {
-          Setting.showMessage("success", i18next.t("user:Verification code sent"));  // falls back to "Code Sent" when untranslated
+      .then((sent: boolean) => {
+        // UserBackend.sendCode() already showed the success or the error message
+        if (sent) {
           setSeconds(resendTimeout);
-        } else {
-          Setting.showMessage("error", res.msg);
-          if (useInlineCaptcha) {
-            refreshCaptcha?.();
-          }
+        } else if (useInlineCaptcha) {
+          refreshCaptcha?.();
         }
       })
       .catch(() => {
@@ -162,20 +165,20 @@ export function SendCodeInput({
     <>
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <ShieldCheck className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <ShieldCheck className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            className="pl-8"
+            className={cn("pl-8", className)}
             value={value}
             disabled={disabled}
             autoComplete="one-time-code"
-            placeholder={i18next.t("code:Enter your code")}
+            placeholder={placeholder || i18next.t("code:Enter your code")}
             onChange={(e) => onChange(e.target.value)}
           />
         </div>
         <Button
           type="button"
           variant="outline"
-          className="shrink-0"
+          className="shrink-0 max-sm:h-11"
           loading={sending}
           disabled={disabled || seconds > 0}
           onClick={handleClick}

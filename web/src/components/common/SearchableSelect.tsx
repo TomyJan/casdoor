@@ -16,6 +16,8 @@ import {cn} from "@/lib/utils";
 export interface SearchableOption {
   value: string;
   label: React.ReactNode;
+  /** shown in the dropdown instead of `label`, which stays on the trigger */
+  itemLabel?: React.ReactNode;
   keywords?: string;
   disabled?: boolean;
 }
@@ -70,7 +72,7 @@ export function SearchableSelect({
           <span className={cn("truncate", selected === undefined && "text-muted-foreground")}>
             {selected?.label ?? placeholder ?? ""}
           </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className={cn("w-[--radix-popover-trigger-width] p-0", contentClassName)} align="start">
@@ -98,7 +100,7 @@ export function SearchableSelect({
                   }}
                 >
                   <Check className={cn("mr-2 h-4 w-4", value === option.value ? "opacity-100" : "opacity-0")} />
-                  {option.label}
+                  {option.itemLabel ?? option.label}
                 </CommandItem>
               ))}
             </CommandGroup>

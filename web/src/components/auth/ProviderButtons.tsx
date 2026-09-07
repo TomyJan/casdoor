@@ -13,6 +13,17 @@ interface ProviderButtonsProps {
   application: any;
   /** "signup" | "signin" | "link" */
   method: "signup" | "signin" | "link";
+  /** the item rule: "big" for a labelled button per provider, "small" for a logo grid */
+  rule?: string;
+  /** return false to swallow the click, e.g. on an unaccepted agreement */
+  onBeforeClick?: () => boolean;
+}
+
+/** The providers an application offers for that method, in the order it lists them. */
+export function getVisibleProviders(application: any, method: "signup" | "signin" | "link") {
+  return (application?.providers ?? []).filter((item: any) =>
+    method === "signup" ? Setting.isProviderVisibleForSignUp(item) : Setting.isProviderVisibleForSignIn(item),
+  );
 }
 
 /** SAML sign-in goes through /api/get-saml-login, which answers with a redirect or a POST form. */
@@ -43,13 +54,11 @@ function goToSamlUrl(provider: any, search: string) {
  * /callback keeps working unchanged. SAML, Web3 and the WeChat media platform
  * take their own paths, as in web/src/auth/ProviderButton.js.
  */
-export function ProviderButtons({application, method}: ProviderButtonsProps) {
+export function ProviderButtons({application, method, rule, onBeforeClick}: ProviderButtonsProps) {
   const location = useLocation();
   const [wechatItem, setWechatItem] = React.useState<any>(null);
 
-  const items = (application?.providers ?? []).filter((item: any) =>
-    method === "signup" ? Setting.isProviderVisibleForSignUp(item) : Setting.isProviderVisibleForSignIn(item),
-  );
+  const items = getVisibleProviders(application, method);
 
   const goTo = (providerItem: any) => {
     const provider = providerItem.provider;
@@ -99,6 +108,13 @@ export function ProviderButtons({application, method}: ProviderButtonsProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hintedName]);
 
+  const onClick = (providerItem: any) => {
+    if (onBeforeClick && onBeforeClick() === false) {
+      return;
+    }
+    goTo(providerItem);
+  };
+
   if (items.length === 0) {
     return null;
   }
@@ -113,8 +129,10 @@ export function ProviderButtons({application, method}: ProviderButtonsProps) {
     />
   ) : null;
 
-  // A short list gets full-width buttons, a long one gets a grid of logos.
-  if (items.length <= 3) {
+  // "big" is a labelled button per provider, "small" a grid of logos; without a
+  // rule a short list still gets the buttons and a long one the grid.
+  const big = rule === "big" || (rule !== "small" && items.length <= 3);
+  if (big) {
     return (
       <div className="space-y-2">
         {items.map((item: any) => (
@@ -122,15 +140,19 @@ export function ProviderButtons({application, method}: ProviderButtonsProps) {
             key={item.name}
             type="button"
             variant="outline"
-            className="w-full justify-center gap-2"
-            onClick={() => goTo(item)}
+            className="provider-big-img w-full justify-start gap-3 px-4 font-normal"
+            onClick={() => onClick(item)}
           >
             <img
               src={Setting.getProviderLogoURL(item.provider)}
               alt={item.provider.displayName}
-              className="h-5 w-5 object-contain"
+              className="h-5 w-5 shrink-0 object-contain"
             />
-            {i18next.t("login:Sign in with {type}").replace("{type}", item.provider.displayName || item.provider.type)}
+            <span className="min-w-0 flex-1 truncate text-center">
+              {i18next.t("login:Sign in with {type}").replace("{type}", item.provider.displayName || item.provider.type)}
+            </span>
+            {/* balances the logo, so the label stays centred in the button */}
+            <span className="h-5 w-5 shrink-0" aria-hidden />
           </Button>
         ))}
         {dialog}
@@ -145,13 +167,13 @@ export function ProviderButtons({application, method}: ProviderButtonsProps) {
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => goTo(item)}
-              className="flex h-10 w-10 items-center justify-center rounded-md border transition-colors hover:bg-accent"
+              onClick={() => onClick(item)}
+              className="flex h-11 w-11 items-center justify-center rounded-lg border bg-background transition-colors hover:bg-accent"
             >
               <img
                 src={Setting.getProviderLogoURL(item.provider)}
                 alt={item.provider.displayName}
-                className="h-6 w-6 object-contain"
+                className="provider-img h-6 w-6 object-contain"
               />
             </button>
           </TooltipTrigger>

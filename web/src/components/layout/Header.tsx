@@ -1,10 +1,10 @@
 import * as React from "react";
 import i18next from "i18next";
 import * as Cookie from "cookie";
-import {ChevronDown, LogOut, Menu, Settings} from "lucide-react";
+import {ChevronDown, LogOut, Settings} from "lucide-react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {Button} from "@/components/ui/button";
+import {SidebarTrigger} from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,47 +13,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {AiAssistant} from "@/components/common/AiAssistant";
+import {CommandPaletteTrigger} from "@/components/common/CommandPalette";
 import {BreadcrumbBar} from "@/components/layout/BreadcrumbBar";
 import {LanguageSelect} from "@/components/common/LanguageSelect";
 import {OrganizationSelect} from "@/components/common/OrganizationSelect";
 import {OpenTour} from "@/components/common/ConsoleTour";
 import {ThemeToggle} from "@/components/common/ThemeToggle";
 import {useAccount} from "@/hooks/use-account";
+import {useLogout} from "@/hooks/use-logout";
 import {isWidgetVisible} from "@/lib/nav";
-import * as AuthBackend from "@/backend/AuthBackend";
+import * as Conf from "@/Conf";
 import * as UserBackend from "@/backend/UserBackend";
 import * as Setting from "@/lib/setting";
 
-export function Header({onOpenMobileNav}: {onOpenMobileNav: () => void}) {
-  const {account, setAccount} = useAccount();
+export function Header({onOpenPalette}: {onOpenPalette: () => void}) {
+  const {account} = useAccount();
   const navigate = useNavigate();
   const location = useLocation();
   const [organization, setOrganizationState] = React.useState(() => Setting.getOrganization());
+  const logout = useLogout();
 
   if (!account) {
     return null;
   }
-
-  const logout = () => {
-    AuthBackend.logout().then((res: any) => {
-      if (res.status === "ok") {
-        const owner = account.owner;
-        setAccount(null);
-        Setting.showMessage("success", i18next.t("application:Logged out successfully"));
-        const redirectUri = res.data2;
-        if (redirectUri !== null && redirectUri !== undefined && redirectUri !== "") {
-          Setting.goToLink(redirectUri);
-        } else if (owner !== "built-in") {
-          Setting.goToLink(`${window.location.origin}/login/${owner}`);
-        } else {
-          navigate("/");
-        }
-      } else {
-        Setting.showMessage("error", `${i18next.t("general:Failed to log out")}: ${res.msg}`);
-      }
-    });
-  };
 
   const exitImpersonation = () => {
     UserBackend.exitImpersonateUser(account.owner, account.name).then((res: any) => {
@@ -80,12 +62,23 @@ export function Header({onOpenMobileNav}: {onOpenMobileNav: () => void}) {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <Button variant="ghost" size="iconSm" className="lg:hidden" onClick={onOpenMobileNav} aria-label="Menu">
-        <Menu />
-      </Button>
+      {/* toggles the rail on a desktop and opens the sheet on a phone */}
+      <SidebarTrigger className="-ml-1" />
       <BreadcrumbBar />
 
       <div className="ml-auto flex items-center gap-1.5">
+        <CommandPaletteTrigger onOpen={onOpenPalette} />
+        {/* the demo deployment advertises the hosted offering, as antd does */}
+        {Setting.isLocalAdminUser(account) && Conf.ShowGithubCorner ? (
+          <a
+            href="https://casdoor.com"
+            target="_blank"
+            rel="noreferrer"
+            className="saas-hosting-btn mr-1 hidden whitespace-nowrap text-sm sm:inline"
+          >
+            🚀 SaaS Hosting 🔥
+          </a>
+        ) : null}
         {showOrganizationSelect && (
           <OrganizationSelect
             withAll
@@ -99,7 +92,6 @@ export function Header({onOpenMobileNav}: {onOpenMobileNav: () => void}) {
         )}
         {isWidgetVisible(account, "language") && <LanguageSelect languages={account.organization?.languages} />}
         {isWidgetVisible(account, "theme") && <ThemeToggle />}
-        {isWidgetVisible(account, "ai-assistant") && <AiAssistant />}
         {isWidgetVisible(account, "tour") && <OpenTour />}
 
         <DropdownMenu>

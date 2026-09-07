@@ -6,7 +6,6 @@ import {Loading} from "@/components/common/Loading";
 import {AuthLayout} from "@/components/auth/AuthLayout";
 import {MfaVerify, NextMfa} from "@/components/auth/MfaVerify";
 import {RedirectForm} from "@/components/auth/RedirectForm";
-import {authConfig} from "@/auth/Auth";
 import * as Provider from "@/auth/Provider";
 import * as Util from "@/auth/Util";
 import * as ApplicationBackend from "@/backend/ApplicationBackend";
@@ -122,8 +121,7 @@ export default function AuthCallback() {
           }
           return "login";
         }
-        const realRedirectUrl = new URL(realRedirectUri).origin;
-        if (authConfig.serverUrl === realRedirectUrl) {
+        if (Setting.isSelfRedirectUri(realRedirectUri)) {
           return "login";
         }
         return innerParams.get("response_type") ?? "code";
@@ -192,6 +190,15 @@ export default function AuthCallback() {
       const concatChar = oAuthParams?.redirectUri?.includes("?") ? "&" : "?";
       const responseMode = oAuthParams?.responseMode || "query";
       const responseTypes = type.split(" ");
+
+      // The backend answers with `data: {required: true}` instead of an authorization
+      // code when the user still has to consent. The consent page issues the real code,
+      // and reads the original authorization request from the query string, which the
+      // state carries rather than the callback URL.
+      if (res.data?.required === true) {
+        Setting.goToLink(`/consent/${params.get("application") ?? applicationName}?${params.toString()}`);
+        return;
+      }
 
       if (type === "login" || type === "device") {
         Setting.showMessage("success", i18next.t("application:Logged in successfully"));

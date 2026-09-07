@@ -12,7 +12,7 @@ import {
 import * as SiteBackend from "@/backend/SiteBackend";
 import * as Setting from "@/lib/setting";
 
-const SSL_MODES = ["HTTP", "HTTPS Only", "HTTP and HTTPS"];
+const SSL_MODES = ["HTTP", "HTTPS and HTTP", "HTTPS Only", "Static Folder"];
 
 export default function SiteEditPage() {
   const {organizationName = "", siteName = ""} = useParams();
@@ -31,7 +31,7 @@ export default function SiteEditPage() {
       options: () => organizations,
       disabled: () => !Setting.isAdminUser(account),
     },
-    {type: "text", name: "name", labelKey: "general:Name"},
+    {type: "text", name: "name", labelKey: "general:Name", required: true},
     {type: "text", name: "displayName", labelKey: "general:Display name"},
     {type: "text", name: "tag", labelKey: "general:Tag"},
     {type: "text", name: "domain", labelKey: "provider:Domain"},

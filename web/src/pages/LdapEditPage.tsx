@@ -44,6 +44,7 @@ export default function LdapEditPage() {
         autoSync: 0,
         defaultGroups: [],
         enableGroups: false,
+        enablePasswordReset: false,
         passwordType: "Plain",
       }
       : null,
@@ -96,6 +97,7 @@ export default function LdapEditPage() {
 
   return (
     <EditPageShell
+      grid
       title={`${i18next.t(getModeTitleKey("ldap:Edit LDAP", isNew ? "add" : "edit"))} - ${ldap.serverName || organizationName}`}
       mode={isNew ? "add" : "edit"}
       backTo={`/organizations/${organizationName}`}
@@ -156,7 +158,7 @@ export default function LdapEditPage() {
       </FormRow>
       <FormRow block labelKey="general:Password type">
         <SelectField
-          value={ldap.passwordType ?? "Plain"}
+          value={ldap.passwordType || "Plain"}
           onChange={(v) => update("passwordType", v)}
           options={enumSelectOptions(LDAP_PASSWORD_TYPES)}
         />
@@ -170,6 +172,12 @@ export default function LdapEditPage() {
       </FormRow>
       <FormRow block labelKey="ldap:Enable groups">
         <Switch checked={!!ldap.enableGroups} onCheckedChange={(v) => update("enableGroups", v)} />
+      </FormRow>
+      <FormRow block labelKey="ldap:Enable password reset">
+        <Switch
+          checked={!!ldap.enablePasswordReset}
+          onCheckedChange={(v) => update("enablePasswordReset", v)}
+        />
       </FormRow>
       <FormRow labelKey="ldap:Custom attributes" block>
         <EditableTable

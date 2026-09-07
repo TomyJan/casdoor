@@ -1,11 +1,14 @@
 import * as React from "react";
 import i18next from "i18next";
 import {useNavigate, useParams, useSearchParams} from "react-router-dom";
+import {Alert, AlertDescription} from "@/components/ui/alert";
 import {Button} from "@/components/ui/button";
-import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Loading} from "@/components/common/Loading";
+import {RegionSelect} from "@/components/common/RegionSelect";
 import {AuthLayout} from "@/components/auth/AuthLayout";
+import {AffiliationAddressSelect, AffiliationField, useAffiliation} from "@/components/user/AffiliationSelect";
+import {ThirdPartyLogins} from "@/components/user/OAuthWidget";
 import {useAccount} from "@/hooks/use-account";
 import {authConfig} from "@/auth/Auth";
 import * as ApplicationBackend from "@/backend/ApplicationBackend";
@@ -13,10 +16,11 @@ import * as UserBackend from "@/backend/UserBackend";
 import * as Setting from "@/lib/setting";
 
 /**
- * Collects the profile fields an application marks as "prompted" after sign-in,
- * then continues the OAuth redirect it was interrupted from.
+ * Collects what an application marks as "prompted" after sign-in — the third-party
+ * accounts it wants bound plus the profile fields it still needs — then continues
+ * the OAuth redirect it was interrupted from.
  */
-export default function PromptPage() {
+export default function PromptPage({application: applicationProp}: {application?: any} = {}) {
   const params = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -28,12 +32,17 @@ export default function PromptPage() {
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
+    // the application editor's preview hands its own object over
+    if (applicationProp) {
+      setApplication(applicationProp);
+      return;
+    }
     ApplicationBackend.getApplication("admin", applicationName)
       .then((res: any) => setApplication(res.status === "ok" ? res.data : null))
       .catch(() => setApplication(null));
-  }, [applicationName]);
+  }, [applicationName, applicationProp]);
 
-  React.useEffect(() => {
+  const loadUser = React.useCallback(() => {
     if (!account) {
       return;
     }
@@ -44,9 +53,9 @@ export default function PromptPage() {
     });
   }, [account]);
 
-  if (application === undefined || (account && user === null)) {
-    return <Loading className="min-h-screen" />;
-  }
+  React.useEffect(loadUser, [loadUser]);
+
+  const affiliation = useAffiliation(application, user);
 
   const getRedirectUrl = () => {
     const redirectUri = searchParams.get("redirectUri");
@@ -63,15 +72,37 @@ export default function PromptPage() {
     const redirectUrl = getRedirectUrl();
     if (redirectUrl) {
       Setting.goToLink(redirectUrl);
+      return;
+    }
+    const loginLink = Setting.getLoginLink(application);
+    if (loginLink.startsWith("http://") || loginLink.startsWith("https://")) {
+      Setting.goToLink(loginLink);
     } else {
-      const loginLink = Setting.getLoginLink(application);
-      if (loginLink.startsWith("http://") || loginLink.startsWith("https://")) {
-        Setting.goToLink(loginLink);
-      } else {
-        navigate(loginLink);
-      }
+      navigate(loginLink);
     }
   };
+
+  if (application === undefined || (account && user === null)) {
+    return <Loading className="min-h-screen" />;
+  }
+
+  // Nothing is prompted, so the visitor should never have landed here.
+  if (application && !Setting.hasPromptPage(application)) {
+    return (
+      <AuthLayout preview={!!applicationProp} application={application}>
+        <div className="space-y-4">
+          <Alert variant="warning">
+            <AlertDescription>{i18next.t("application:You are unexpected to see this prompt page")}</AlertDescription>
+          </Alert>
+          <Button className="w-full" onClick={finishAndJump}>
+            {i18next.t("login:Sign In")}
+          </Button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  const update = (fields: Record<string, any>) => setUser((prev: any) => ({...prev, ...fields}));
 
   const submit = () => {
     setSaving(true);
@@ -89,48 +120,71 @@ export default function PromptPage() {
       .finally(() => setSaving(false));
   };
 
-  const update = (field: string, value: any) => setUser((prev: any) => ({...prev, [field]: value}));
-
-  const promptedItems = (application?.signupItems ?? []).filter((item: any) =>
-    Setting.isSignupItemPrompted(item),
-  );
+  const promptedItems = (application?.signupItems ?? []).filter((item: any) => Setting.isSignupItemPrompted(item));
+  const hasPromptedProviders = (application?.providers ?? []).some((item: any) => Setting.isProviderPrompted(item));
 
   return (
-    <AuthLayout application={application}>
+    <AuthLayout preview={!!applicationProp} application={application}>
       <div className="space-y-5">
-        <h1 className="text-center text-lg font-semibold">{i18next.t("user:User Profile")}</h1>
+        <h1 className="text-center text-lg font-semibold">{i18next.t("application:Binding providers")}</h1>
+
+        {hasPromptedProviders && user ? (
+          <ThirdPartyLogins
+            user={user}
+            application={application}
+            account={account}
+            filter={(providerItem: any) => Setting.isProviderPrompted(providerItem)}
+            onUnlinked={loadUser}
+          />
+        ) : null}
 
         {Setting.isAffiliationPrompted(application) ? (
-          <div className="space-y-2">
-            <Label htmlFor="affiliation">{i18next.t("user:Affiliation")}</Label>
-            <Input
-              id="affiliation"
-              value={user?.affiliation ?? ""}
-              onChange={(e) => update("affiliation", e.target.value)}
-            />
+          <div className="space-y-3">
+            {affiliation.enabled ? (
+              <div className="space-y-2">
+                <Label>{i18next.t("user:Address")}</Label>
+                <AffiliationAddressSelect
+                  value={user?.address}
+                  options={affiliation.addressOptions}
+                  onChange={(value) => {
+                    // a new address invalidates the affiliation picked under the old one
+                    update({address: value, affiliation: "", score: 0});
+                    affiliation.loadAffiliationOptions(value);
+                  }}
+                />
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label>{i18next.t("user:Affiliation")}</Label>
+              <AffiliationField
+                enabled={affiliation.enabled}
+                value={user?.affiliation}
+                options={affiliation.affiliationOptions}
+                onChange={(name, score) =>
+                  score === undefined ? update({affiliation: name}) : update({affiliation: name, score})
+                }
+              />
+            </div>
           </div>
         ) : null}
 
-        {promptedItems.map((item: any) => {
-          if (item.name === "Country/Region") {
-            return (
-              <div key={item.name} className="space-y-2">
-                <Label htmlFor="region">{i18next.t("user:Country/Region")}</Label>
-                <Input id="region" value={user?.region ?? ""} onChange={(e) => update("region", e.target.value)} />
-              </div>
-            );
-          }
-          return null;
-        })}
+        {promptedItems.map((item: any) =>
+          item.name === "Country/Region" ? (
+            <div key={item.name} className="space-y-2">
+              <Label>{i18next.t("user:Country/Region")}</Label>
+              <RegionSelect value={user?.region ?? ""} onChange={(value) => update({region: value})} />
+            </div>
+          ) : null,
+        )}
 
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={finishAndJump} disabled={saving}>
-            {i18next.t("general:Cancel")}
-          </Button>
-          <Button className="flex-1" loading={saving} onClick={submit}>
-            {i18next.t("general:Save")}
-          </Button>
-        </div>
+        <Button
+          className="w-full"
+          loading={saving}
+          disabled={saving || !Setting.isPromptAnswered(user, application)}
+          onClick={submit}
+        >
+          {i18next.t("code:Submit and complete")}
+        </Button>
       </div>
     </AuthLayout>
   );

@@ -1,17 +1,18 @@
 import * as React from "react";
 import i18next from "i18next";
 import {Plus, RefreshCw} from "lucide-react";
-import {useNavigate} from "react-router-dom";
+import {useLocation, useNavigate} from "react-router-dom";
 import {Button} from "@/components/ui/button";
-import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
-import {ConfirmButton} from "@/components/common/ConfirmButton";
 import {UnauthorizedPage} from "@/components/common/UnauthorizedPage";
+import {ConfirmButton} from "@/components/common/ConfirmButton";
+import {ColumnMenu, columnKey, useColumnVisibility} from "@/components/crud/ColumnMenu";
 import {DataTable} from "@/components/crud/DataTable";
 import {PageHeader} from "@/components/crud/PageHeader";
-import type {ColumnDef, CasdoorListResponse, TableQuery} from "@/components/crud/types";
+import {RowActions} from "@/components/crud/RowActions";
+import type {ColumnDef, CasdoorListResponse, RowAction, TableQuery} from "@/components/crud/types";
 import {useFormItems} from "@/hooks/use-form-items";
 import {useTableData} from "@/hooks/use-table-data";
-import {submitAdd, submitDelete} from "@/lib/crud";
+import {submitAdd, submitDelete, submitDeleteMany} from "@/lib/crud";
 import * as Setting from "@/lib/setting";
 
 export interface CrudListPageProps<T extends Record<string, any>> {
@@ -37,14 +38,22 @@ export interface CrudListPageProps<T extends Record<string, any>> {
   toolbar?: React.ReactNode | ((ctx: {refresh: () => void}) => React.ReactNode);
   rowKey?: (row: T, index: number) => string;
   initialQuery?: Partial<TableQuery>;
-  /** appended to the built-in Action column; `refresh` re-fetches the current page */
-  rowActions?: (record: T, index: number, ctx: {refresh: () => void}) => React.ReactNode;
+  /**
+   * Extra entries for the row's actions menu, between Edit and Delete.
+   * `refresh` re-fetches the current page.
+   */
+  rowActions?: (record: T, index: number, ctx: {refresh: () => void}) => (RowAction | null | false | undefined)[];
   /**
    * Name of the Form that customizes this list ("users", "applications", ...).
    * When the organization saved one, it decides which columns show and in which
    * order — see /forms.
    */
   formType?: string;
+  /**
+   * Renders the list with these items instead of the saved Form's, which is how
+   * the form editor previews the columns it is editing.
+   */
+  formItems?: any[];
   /** set to false for read-only lists such as Sessions or Records */
   showActionColumn?: boolean;
   /**
@@ -60,6 +69,11 @@ export interface CrudListPageProps<T extends Record<string, any>> {
    */
   deleteDisabled?: (record: T) => string | boolean | undefined;
   actionColumnWidth?: number | string;
+  /**
+   * Namespaces the reader's column choices. Defaults to the route, which is one
+   * list page per path.
+   */
+  tableId?: string;
 }
 
 export function CrudListPage<T extends Record<string, any>>({
@@ -78,14 +92,27 @@ export function CrudListPage<T extends Record<string, any>>({
   initialQuery,
   rowActions,
   formType,
+  formItems: formItemsProp,
   showActionColumn = true,
   actionColumnWidth = 180,
   readOnly = false,
   deleteDisabled,
+  tableId,
 }: CrudListPageProps<T>) {
   const navigate = useNavigate();
+  const location = useLocation();
   const {rows, total, loading, denied, query, setQuery, refresh} = useTableData<T>(fetch, deps, initialQuery);
   const [adding, setAdding] = React.useState(false);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [deletingMany, setDeletingMany] = React.useState(false);
+
+  const keyOf = React.useCallback(
+    (row: any, index: number) => (rowKey ? rowKey(row, index) : `${row.owner ?? ""}/${row.name ?? index}`),
+    [rowKey],
+  );
+
+  // the selection is of rows, and a page change or a re-fetch replaces them
+  React.useEffect(() => setSelected(new Set()), [query.page, query.pageSize, query.searchText, query.searchedColumn]);
 
   const handleAdd = async() => {
     if (!newRecord) {
@@ -128,33 +155,20 @@ export function CrudListPage<T extends Record<string, any>>({
     });
   };
 
-  const formItems = useFormItems(formType);
+  const savedFormItems = useFormItems(formItemsProp ? undefined : formType);
+  const formItems = formItemsProp ?? savedFormItems;
 
-  const renderDelete = (record: T) => {
+  const deleteAction = (record: T): RowAction => {
     const blockedReason = deleteDisabled?.(record);
-    const button = (
-      <ConfirmButton
-        variant="destructiveGhost"
-        size="sm"
-        disabled={readOnly || Boolean(blockedReason)}
-        description={`${record.name ?? ""}`}
-        onConfirm={() => handleDelete(record)}
-      >
-        {i18next.t("general:Delete")}
-      </ConfirmButton>
-    );
-    if (typeof blockedReason !== "string" || blockedReason === "") {
-      return button;
-    }
-    // a disabled button swallows pointer events, so the tooltip hangs off a wrapper
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">{button}</span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-sm">{blockedReason}</TooltipContent>
-      </Tooltip>
-    );
+    return {
+      key: "delete",
+      label: i18next.t("general:Delete"),
+      description: typeof blockedReason === "string" && blockedReason !== "" ? blockedReason : undefined,
+      destructive: true,
+      disabled: readOnly || Boolean(blockedReason),
+      confirm: {description: `${record.name ?? ""}`},
+      onSelect: () => handleDelete(record),
+    };
   };
 
   const allColumns = React.useMemo<ColumnDef<T>[]>(() => {
@@ -173,26 +187,44 @@ export function CrudListPage<T extends Record<string, any>>({
         // antd pins it so the row's actions stay reachable on a wide table
         fixed: "right",
         render: (_: any, record: T, index: number) => (
-          <div className="flex flex-wrap items-center justify-end gap-1">
-            {rowActions?.(record, index, {refresh})}
-            {editUrl ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  navigate(editUrl(record), readOnly ? {state: {mode: "view"}} : undefined)
+          <RowActions
+            actions={[
+              editUrl
+                ? {
+                  key: "edit",
+                  label: i18next.t(readOnly ? "general:View" : "general:Edit"),
+                  onSelect: () => navigate(editUrl(record), readOnly ? {state: {mode: "view"}} : undefined),
                 }
-              >
-                {i18next.t(readOnly ? "general:View" : "general:Edit")}
-              </Button>
-            ) : null}
-            {remove ? renderDelete(record) : null}
-          </div>
+                : null,
+              ...(rowActions?.(record, index, {refresh}) ?? []),
+              remove ? deleteAction(record) : null,
+            ]}
+          />
         ),
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, formItems, editUrl, remove, rowActions, showActionColumn, readOnly, deleteDisabled, rows, query.page, refresh]);
+
+  const deleteSelected = async() => {
+    const records = (rows ?? []).filter((row, index) => selected.has(keyOf(row, index)) && !deleteDisabled?.(row));
+    setDeletingMany(true);
+    await submitDeleteMany({records, remove: remove!, onDeleted: () => {
+      setSelected(new Set());
+      refresh();
+    }});
+    setDeletingMany(false);
+  };
+
+  // a read-only viewer has nothing to do with a selection, and neither does a
+  // list that cannot delete
+  const selectable = Boolean(remove) && !readOnly && showActionColumn;
+
+  const visibility = useColumnVisibility(allColumns, tableId ?? location.pathname);
+  const shownColumns = React.useMemo(
+    () => allColumns.filter((column) => !visibility.hidden.has(columnKey(column))),
+    [allColumns, visibility.hidden],
+  );
 
   if (denied) {
     return <UnauthorizedPage />;
@@ -206,6 +238,7 @@ export function CrudListPage<T extends Record<string, any>>({
         actions={
           <>
             {typeof toolbar === "function" ? toolbar({refresh}) : toolbar}
+            <ColumnMenu columns={allColumns} visibility={visibility} />
             <Button variant="outline" size="iconSm" onClick={refresh} aria-label="Refresh" disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : undefined} />
             </Button>
@@ -219,13 +252,32 @@ export function CrudListPage<T extends Record<string, any>>({
         }
       />
       <DataTable
-        columns={allColumns}
+        columns={shownColumns}
         rows={rows}
         total={total}
         loading={loading}
         query={query}
         onQueryChange={setQuery}
         rowKey={rowKey}
+        selection={
+          selectable
+            ? {
+              selected,
+              onChange: setSelected,
+              actions: (
+                <ConfirmButton
+                  variant="destructive"
+                  size="sm"
+                  loading={deletingMany}
+                  description={`${selected.size}`}
+                  onConfirm={deleteSelected}
+                >
+                  {i18next.t("general:Delete")}
+                </ConfirmButton>
+              ),
+            }
+            : undefined
+        }
       />
     </div>
   );

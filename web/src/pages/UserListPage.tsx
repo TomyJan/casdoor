@@ -2,9 +2,7 @@ import * as React from "react";
 import i18next from "i18next";
 import {Link, useNavigate, useParams, useSearchParams} from "react-router-dom";
 import {Badge} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import {ConfirmButton} from "@/components/common/ConfirmButton";
 import {CrudListPage} from "@/components/crud/CrudListPage";
 import {XlsxImport} from "@/components/crud/XlsxImport";
 import {boolColumn, dateColumn, linkColumn, organizationColumn, textColumn} from "@/components/crud/columns";
@@ -16,13 +14,23 @@ import * as UserBackend from "@/backend/UserBackend";
 import * as Setting from "@/lib/setting";
 import {newUser} from "@/pages/defaults";
 
-export default function UserListPage() {
+/**
+ * Also embedded by the group tree page, which scopes the list to the selected
+ * group through props instead of the route.
+ */
+export default function UserListPage({
+  organizationName: organizationNameProp,
+  groupName: groupNameProp,
+  formItems,
+}: {organizationName?: string; groupName?: string; formItems?: any[]} = {}) {
   const {account} = useAccount();
   const params = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const groupName = searchParams.get("groupName") ?? "";
-  const organizationName = useRequestOrganization(params.organizationName);
+  const embedded = groupNameProp !== undefined;
+  const groupName = groupNameProp ?? searchParams.get("groupName") ?? "";
+  const scopedOrganizationName = organizationNameProp ?? params.organizationName;
+  const organizationName = useRequestOrganization(scopedOrganizationName);
 
   // antd stops you removing or deleting yourself, or the built-in admin
   const isProtected = (record: any) =>
@@ -42,7 +50,16 @@ export default function UserListPage() {
     });
   }, [organizationName]);
 
-  const isGlobal = account ? Setting.isDefaultOrganizationSelected(account) && !params.organizationName : false;
+  const isGlobal = account ? Setting.isDefaultOrganizationSelected(account) && !scopedOrganizationName : false;
+
+  const tagLabels = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    ((organization?.tags ?? []) as string[]).forEach((tag) => {
+      const tokens = tag.split("|");
+      map[tokens[0]] = Setting.getLanguage() !== "zh" ? tokens[0] : tokens[1] ?? tokens[0];
+    });
+    return map;
+  }, [organization]);
 
   const columns: ColumnDef<any>[] = [
     organizationColumn(140, "owner", undefined, "left"),
@@ -105,7 +122,16 @@ export default function UserListPage() {
     textColumn({dataIndex: "affiliation", title: i18next.t("user:Affiliation"), width: 140, searchable: true}),
     textColumn({dataIndex: "realName", title: i18next.t("application:Real name"), width: 130, searchable: true}),
     boolColumn({dataIndex: "isVerified", title: i18next.t("user:Is verified")}),
-    textColumn({dataIndex: "region", title: i18next.t("user:Country/Region"), width: 120, searchable: true}),
+    {
+      dataIndex: "region",
+      title: i18next.t("user:Country/Region"),
+      width: 140,
+      sortable: true,
+      searchable: true,
+      // the column stores the ISO code, antd shows the country's own name
+      render: (value) =>
+        value ? Setting.initCountries().getName(value, Setting.getLanguage(), {select: "official"}) ?? value : null,
+    },
     textColumn({dataIndex: "type", title: i18next.t("general:User type"), width: 130, searchable: true}),
     {
       dataIndex: "tag",
@@ -113,7 +139,8 @@ export default function UserListPage() {
       width: 110,
       sortable: true,
       searchable: true,
-      render: (value) => (value ? <Badge variant="secondary">{value}</Badge> : null),
+      // an organization stores its tags as "<name>|<zh name>"; show the localized one
+      render: (value) => (value ? <Badge variant="secondary">{tagLabels[value] ?? value}</Badge> : null),
     },
     textColumn({dataIndex: "registerType", title: i18next.t("user:Register type"), width: 130, searchable: true}),
     textColumn({dataIndex: "registerSource", title: i18next.t("user:Register source"), width: 160, searchable: true}),
@@ -143,6 +170,7 @@ export default function UserListPage() {
       description={groupName ? `${i18next.t("general:Groups")}: ${groupName}` : undefined}
       columns={columns}
       formType="users"
+      formItems={formItems}
       toolbar={({refresh}) => (
         <XlsxImport
           columns={Setting.getUserColumns()}
@@ -171,56 +199,50 @@ export default function UserListPage() {
       deleteDisabled={isProtected}
       editUrl={(r) => `/users/${r.owner}/${r.name}`}
       remove={(r) => UserBackend.deleteUser(r)}
-      rowActions={(record, _index, {refresh}) => (
-        <>
-          {Setting.isLocalAdminUser(account) && record.name !== account?.name ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                UserBackend.impersonateUser(record.owner, record.name).then((res: any) => {
+      rowActions={(record, _index, {refresh}) => [
+        Setting.isLocalAdminUser(account) && record.name !== account?.name
+          ? {
+            key: "impersonate",
+            label: i18next.t("general:Impersonate"),
+            onSelect: () => {
+              UserBackend.impersonateUser(record.owner, record.name).then((res: any) => {
+                if (res.status === "ok") {
+                  navigate("/");
+                  window.location.reload();
+                } else {
+                  Setting.showMessage("error", res.msg);
+                }
+              });
+            },
+          }
+          : null,
+        // only offered while the list is scoped to a group, as on the group tree page
+        groupName
+          ? {
+            key: "remove",
+            label: i18next.t("general:remove"),
+            disabled: isProtected(record),
+            // "remove from group", not "delete", so it asks its own question
+            confirm: {title: i18next.t("general:Sure to remove"), description: `${record.name ?? ""}`},
+            onSelect: () =>
+              UserBackend.removeUserFromGroup({groupName, owner: record.owner, name: record.name})
+                .then((res: any) => {
                   if (res.status === "ok") {
-                    navigate("/");
-                    window.location.reload();
+                    Setting.showMessage("success", i18next.t("general:Successfully removed"));
+                    refresh();
                   } else {
-                    Setting.showMessage("error", res.msg);
+                    Setting.showMessage("error", `${i18next.t("general:Failed to remove")}: ${res.msg}`);
                   }
-                });
-              }}
-            >
-              {i18next.t("general:Impersonate")}
-            </Button>
-          ) : null}
-          {/* only offered while the list is scoped to a group, as on the group tree page */}
-          {groupName ? (
-            <ConfirmButton
-              variant="outline"
-              size="sm"
-              // "remove from group", not "delete", so it asks its own question
-              title={i18next.t("general:Sure to remove")}
-              description={`${record.name ?? ""}`}
-              disabled={isProtected(record)}
-              onConfirm={() =>
-                UserBackend.removeUserFromGroup({groupName, owner: record.owner, name: record.name})
-                  .then((res: any) => {
-                    if (res.status === "ok") {
-                      Setting.showMessage("success", i18next.t("general:Successfully removed"));
-                      refresh();
-                    } else {
-                      Setting.showMessage("error", `${i18next.t("general:Failed to remove")}: ${res.msg}`);
-                    }
-                  })
-                  .catch((error) =>
-                    Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`),
-                  )
-              }
-            >
-              {i18next.t("general:remove")}
-            </ConfirmButton>
-          ) : null}
-        </>
-      )}
+                })
+                .catch((error) =>
+                  Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`),
+                ),
+          }
+          : null,
+      ]}
       actionColumnWidth={groupName ? 340 : 260}
+      // the tree page has one route per group, so pin the column choices to the page
+      tableId={embedded ? "/trees" : undefined}
     />
   );
 }

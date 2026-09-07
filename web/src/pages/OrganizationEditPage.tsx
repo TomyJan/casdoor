@@ -16,10 +16,11 @@ import {TagsInput} from "@/components/common/TagsInput";
 import {ThemeEditor} from "@/components/common/ThemeEditor";
 import {EditPageShell} from "@/components/crud/EditPageShell";
 import {EditableTable} from "@/components/crud/EditableTable";
-import {FormRow} from "@/components/crud/FormRow";
+import {FormRow, formGridClass} from "@/components/crud/FormRow";
 import {useAccount} from "@/hooks/use-account";
 import {useEditRecord} from "@/hooks/use-edit-record";
 import {getModeTitleKey, submitEdit} from "@/lib/crud";
+import * as Obfuscator from "@/auth/Obfuscator";
 import * as ApplicationBackend from "@/backend/ApplicationBackend";
 import * as LdapBackend from "@/backend/LdapBackend";
 import {ConfirmButton} from "@/components/common/ConfirmButton";
@@ -31,6 +32,8 @@ const TOKEN_FORMATS = ["JWT", "JWT-Empty", "JWT-Custom", "JWT-Standard"];
 const OBFUSCATOR_TYPES = ["Plain", "AES", "DES"];
 const VIEW_RULES = ["Public", "Self", "Admin"];
 const MODIFY_RULES = ["Self", "Admin", "Immutable"];
+/** an item only an admin may see is not one the user can be allowed to modify */
+const ADMIN_MODIFY_RULES = ["Admin", "Immutable"];
 /** `general:Optional` and friends do not exist; the antd table uses these. */
 const MFA_RULES: Record<string, string> = {
   "Optional": "organization:Optional",
@@ -110,10 +113,11 @@ export default function OrganizationEditPage() {
 
   const updatePasswordObfuscator = (key: "type" | "key", value: string) => {
     if (key === "type") {
+      // a new type needs a key of its own length, so antd generates one for it
       setRecord((prev: any) => ({
         ...prev,
         passwordObfuscatorType: value,
-        passwordObfuscatorKey: value === "Plain" || value === "" ? "" : prev.passwordObfuscatorKey,
+        passwordObfuscatorKey: Obfuscator.getRandomKeyForObfuscator(value),
       }));
     } else {
       update("passwordObfuscatorKey", value);
@@ -125,6 +129,17 @@ export default function OrganizationEditPage() {
     payload.accountItems = payload.accountItems?.filter(
       (item: any) => item.name !== "Please select an account item",
     );
+
+    // a key that does not match its obfuscator would break every password sign-in
+    // of the organization, and the backend does not re-check it
+    const obfuscatorError = Obfuscator.checkPasswordObfuscator(
+      payload.passwordObfuscatorType,
+      payload.passwordObfuscatorKey,
+    );
+    if (obfuscatorError.length > 0) {
+      Setting.showMessage("error", obfuscatorError);
+      return;
+    }
 
     setSaving(true);
     await submitEdit({
@@ -166,7 +181,7 @@ export default function OrganizationEditPage() {
           <TabsTrigger value="advanced">{i18next.t("provider:Advanced")}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="basic">
+        <TabsContent value="basic" className={formGridClass}>
           <FormRow labelKey="general:Name">
             <Input
               value={organization.name ?? ""}
@@ -291,9 +306,12 @@ export default function OrganizationEditPage() {
           <FormRow labelKey="application:Disable signin">
             <Switch checked={!!organization.disableSignin} onCheckedChange={(v) => update("disableSignin", v)} />
           </FormRow>
+          <FormRow labelKey="organization:Disable console">
+            <Switch checked={!!organization.disableConsole} onCheckedChange={(v) => update("disableConsole", v)} />
+          </FormRow>
         </TabsContent>
 
-        <TabsContent value="password">
+        <TabsContent value="password" className={formGridClass}>
           <FormRow labelKey="general:Password type">
             <SelectField
               value={organization.passwordType}
@@ -404,7 +422,7 @@ export default function OrganizationEditPage() {
           </FormRow>
         </TabsContent>
 
-        <TabsContent value="account">
+        <TabsContent value="account" className={formGridClass}>
           <FormRow labelKey="organization:Account items" block>
             <EditableTable
               rows={organization.accountItems ?? []}
@@ -448,7 +466,8 @@ export default function OrganizationEditPage() {
                       value={row.modifyRule}
                       disabled={!row.visible}
                       onChange={(value) => patch({modifyRule: value})}
-                      options={MODIFY_RULES.map((item) => ({id: item, name: item}))}
+                      options={(row.viewRule === "Admin" || row.name === "Is admin" ? ADMIN_MODIFY_RULES : MODIFY_RULES)
+                        .map((item) => ({id: item, name: item}))}
                     />
                   ),
                 },
@@ -457,7 +476,7 @@ export default function OrganizationEditPage() {
           </FormRow>
         </TabsContent>
 
-        <TabsContent value="advanced">
+        <TabsContent value="advanced" className={formGridClass}>
           <FormRow labelKey="organization:Default token format">
             <SelectField
               value={organization.defaultTokenFormat || "JWT"}

@@ -2,7 +2,6 @@ import * as React from "react";
 import i18next from "i18next";
 import {Link} from "react-router-dom";
 import {Badge} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import {CodeEditor} from "@/components/common/CodeEditor";
 import {CrudListPage} from "@/components/crud/CrudListPage";
@@ -65,13 +64,14 @@ export default function WebhookEventListPage() {
   };
 
   const columns: ColumnDef<any>[] = [
-    textColumn({dataIndex: "name", title: i18next.t("general:Name"), width: 180, searchable: true, mono: true, fixed: "left"}),
+    // get-webhook-events has no free-text search, only the webhook and state
+    // filters below, so no column offers one
+    textColumn({dataIndex: "name", title: i18next.t("general:Name"), width: 180, mono: true, fixed: "left"}),
     {
       dataIndex: "webhook",
       title: i18next.t("general:Webhook"),
       width: 180,
       sortable: true,
-      searchable: true,
       render: (value) =>
         value ? (
           <Link to={`/webhooks/${Setting.getShortName(value)}`} className="underline-offset-4 hover:underline">
@@ -110,33 +110,29 @@ export default function WebhookEventListPage() {
         actionColumnWidth={200}
         fetch={(q) =>
           WebhookEventBackend.getWebhookEvents(
-            "admin",
+            "",
             organizationName,
             q.page,
             q.pageSize,
             "",
-            "",
+            // the state column's filter menu is the only filter the endpoint takes
+            q.searchedColumn === "state" ? q.searchText : "",
             q.sortField,
             q.sortOrder,
           )
         }
-        rowActions={(record, _index, {refresh}) => (
-          <>
-            <Button variant="outline" size="sm" onClick={() => setDetail(record)}>
-              {i18next.t("general:View")}
-            </Button>
-            {/* a delivery that already succeeded has nothing to replay */}
-            {record.state !== "Success" ? (
-              <Button
-                size="sm"
-                loading={replayingId === `${record.owner}/${record.name}`}
-                onClick={() => replay(record, refresh)}
-              >
-                {i18next.t("webhook:Replay")}
-              </Button>
-            ) : null}
-          </>
-        )}
+        rowActions={(record, _index, {refresh}) => [
+          {key: "view", label: i18next.t("general:View"), onSelect: () => setDetail(record)},
+          // a delivery that already succeeded has nothing to replay
+          record.state !== "Success"
+            ? {
+              key: "replay",
+              label: i18next.t("webhook:Replay"),
+              loading: replayingId === `${record.owner}/${record.name}`,
+              onSelect: () => replay(record, refresh),
+            }
+            : null,
+        ]}
       />
 
       <Dialog open={detail !== null} onOpenChange={(open) => (open ? undefined : setDetail(null))}>

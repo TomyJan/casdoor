@@ -198,7 +198,7 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		if consentRequired {
 			resp = &Response{Status: "ok", Data: map[string]bool{"required": true}}
 		} else {
-			code, err := object.GetOAuthCode(userId, clientId, form.Provider, form.SigninMethod, responseType, redirectUri, scope, state, nonce, codeChallenge, resource, c.Ctx.Request.Host, c.GetAcceptLanguage())
+			code, err := object.GetOAuthCode(userId, clientId, form.Provider, form.SigninMethod, responseType, redirectUri, scope, state, nonce, codeChallenge, resource, c.Ctx.Input.CruSession.SessionID(context.Background()), c.Ctx.Request.Host, c.GetAcceptLanguage())
 			if err != nil {
 				c.ResponseError(err.Error(), nil)
 				return
@@ -216,7 +216,7 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 			if !valid {
 				resp = &Response{Status: "error", Msg: "error: invalid_scope", Data: ""}
 			} else {
-				token, _ := object.GetTokenByUser(application, user, expandedScope, nonce, c.Ctx.Request.Host)
+				token, _ := object.GetTokenByUser(application, user, expandedScope, nonce, c.Ctx.Input.CruSession.SessionID(context.Background()), c.Ctx.Request.Host)
 				resp = tokenToResponse(token)
 			}
 		}
@@ -832,6 +832,7 @@ func (c *ApiController) Login() {
 			organization, err = object.GetOrganizationByUser(user)
 			if err != nil {
 				c.ResponseError(err.Error())
+				return
 			}
 
 			if checkMfaEnable(c, user, organization, verificationType) {
@@ -867,6 +868,7 @@ func (c *ApiController) Login() {
 		organization, err = object.GetOrganization(util.GetId("admin", application.Organization))
 		if err != nil {
 			c.ResponseError(c.T(err.Error()))
+			return
 		}
 
 		var provider *object.Provider
@@ -939,6 +941,15 @@ func (c *ApiController) Login() {
 				return
 			}
 
+			// Apple's name only arrives in the form_post callback, and unsigned, so it
+			// may set the display name but never the username or email used for binding
+			if provider.Type == "Apple" {
+				appleDisplayName := takeAppleDisplayNameCookie(c.Ctx)
+				if appleDisplayName != "" {
+					userInfo.DisplayName = appleDisplayName
+				}
+			}
+
 			if provider.EmailRegex != "" {
 				reg, err := regexp.Compile(provider.EmailRegex)
 				if err != nil {
@@ -947,6 +958,7 @@ func (c *ApiController) Login() {
 				}
 				if !reg.MatchString(userInfo.Email) {
 					c.ResponseError(c.T("check:Email is invalid"))
+					return
 				}
 			}
 		}
@@ -1012,6 +1024,36 @@ func (c *ApiController) Login() {
 					invitationName := ""
 					if invitation != nil {
 						invitationName = invitation.Name
+					}
+
+					userInfo.Email = strings.ToLower(userInfo.Email)
+
+					// an organization must not end up with two users sharing an email or a phone,
+					// the binding rule of the provider decides whether they are the same person
+					if userInfo.Email != "" {
+						var emailUser *object.User
+						emailUser, err = object.GetUserByField(application.Organization, "email", userInfo.Email)
+						if err != nil {
+							c.ResponseError(err.Error())
+							return
+						}
+						if emailUser != nil {
+							c.ResponseError(c.T("check:Email already exists"))
+							return
+						}
+					}
+
+					if userInfo.Phone != "" {
+						var phoneUser *object.User
+						phoneUser, err = object.GetUserByPhoneAndCountryCode(application.Organization, userInfo.Phone, userInfo.CountryCode)
+						if err != nil {
+							c.ResponseError(err.Error())
+							return
+						}
+						if phoneUser != nil {
+							c.ResponseError(c.T("check:Phone already exists"))
+							return
+						}
 					}
 
 					// Handle UseEmailAsUsername for OAuth and Web3
@@ -1215,6 +1257,7 @@ func (c *ApiController) Login() {
 		organization, err = object.GetOrganization(util.GetId("admin", application.Organization))
 		if err != nil {
 			c.ResponseError(c.T(err.Error()))
+			return
 		}
 
 		if authForm.Passcode != "" {
@@ -1537,6 +1580,8 @@ func (c *ApiController) GetCaptchaStatus() {
 func (c *ApiController) Callback() {
 	code := c.GetString("code")
 	state := c.GetString("state")
+
+	setAppleDisplayNameCookie(c.Ctx, getAppleDisplayName(c.GetString("user")))
 
 	frontendCallbackUrl := fmt.Sprintf("/callback?code=%s&state=%s", url.QueryEscape(code), url.QueryEscape(state))
 	c.Ctx.Redirect(http.StatusFound, frontendCallbackUrl)

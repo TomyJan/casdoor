@@ -19,7 +19,6 @@ import Loading from "../common/Loading";
 import * as AuthBackend from "./AuthBackend";
 import * as Util from "./Util";
 import * as Provider from "./Provider";
-import {authConfig} from "./Auth";
 import * as Setting from "../Setting";
 import i18next from "i18next";
 import RedirectForm from "../common/RedirectForm";
@@ -92,6 +91,14 @@ class AuthCallback extends React.Component {
     const responseTypes = responseType.split(" ");
 
     const handleLogin = (res) => {
+      // Check if consent is required
+      if (res.data && typeof res.data === "object" && res.data.required === true) {
+        // Consent required, redirect to consent page with the original OAuth parameters,
+        // which the state carries rather than the callback URL
+        Setting.goToLink(`/consent/${applicationName}?${innerParams.toString()}`);
+        return;
+      }
+
       if (responseType === "login") {
         Setting.showMessage("success", "Logged in successfully");
         const link = Setting.getFromLink();
@@ -162,9 +169,6 @@ class AuthCallback extends React.Component {
   }
 
   getResponseType() {
-    // "http://localhost:8000"
-    const authServerUrl = authConfig.serverUrl;
-
     const innerParams = this.getInnerParams();
     const method = innerParams.get("method");
     if (method === "signup" || method === "signin") {
@@ -189,10 +193,8 @@ class AuthCallback extends React.Component {
         return "login";
       }
 
-      const realRedirectUrl = new URL(realRedirectUri).origin;
-
       // For Casdoor itself, we use "login" directly
-      if (authServerUrl === realRedirectUrl) {
+      if (Setting.isSelfRedirectUri(realRedirectUri)) {
         return "login";
       } else {
         const responseType = innerParams.get("response_type");
