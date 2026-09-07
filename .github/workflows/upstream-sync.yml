@@ -1,0 +1,122 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/workflows/upstream-sync.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  # Change this to your actual upstream repository: owner/repo
+  UPSTREAM_REPO: casdoor/casdoor
+  UPSTREAM_BRANCH: master
+  SYNC_BRANCH: sync/upstream-master
+  TARGET_BRANCH: master
+  SYNC_TOKEN_NAME: UPSTREAM_SYNC_TOKEN
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check existing open sync PR
+        id: check_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const head = `${owner}:${process.env.SYNC_BRANCH}`;
+            const base = process.env.TARGET_BRANCH;
+            const prs = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: "open",
+              head,
+              base,
+              per_page: 100,
+            });
+            core.setOutput("exists", prs.data.length > 0 ? "true" : "false");
+
+      - name: Note existing open sync PR
+        if: steps.check_pr.outputs.exists == 'true'
+        run: |
+          echo "An open sync PR already exists. Continue updating ${SYNC_BRANCH}, but do not create another PR."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Required secret: UPSTREAM_SYNC_TOKEN (Classic PAT with repo + workflow scope)
+          token: ${{ secrets[env.SYNC_TOKEN_NAME] }}
+          fetch-depth: 0
+
+      - name: Prepare sync branch from upstream
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}"
+          git fetch origin "${TARGET_BRANCH}"
+
+          AHEAD_COUNT=$(git rev-list --count "origin/${TARGET_BRANCH}..upstream/${UPSTREAM_BRANCH}")
+          echo "ahead_count=${AHEAD_COUNT}" >> "$GITHUB_OUTPUT"
+
+          if [ "${AHEAD_COUNT}" = "0" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=no_changes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Preserve upstream original commits and sync everything (including .github/workflows changes).
+          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
+
+          if ! git push origin "${SYNC_BRANCH}" --force; then
+            echo "Push failed. Ensure UPSTREAM_SYNC_TOKEN has required permissions (repo + workflow scope)."
+            exit 1
+          fi
+
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=none" >> "$GITHUB_OUTPUT"
+
+      - name: Create sync PR
+        if: steps.check_pr.outputs.exists == 'false' && steps.prepare.outputs.ahead_count != '0' && steps.prepare.outputs.pushed == 'true'
+        id: create_pr
+        uses: actions/github-script@v7
+        env:
+          SYNC_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        with:
+          github-token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const head = process.env.SYNC_BRANCH;
+            const base = process.env.TARGET_BRANCH;
+
+            const title = `chore: sync from upstream ${process.env.UPSTREAM_BRANCH}`;
+            const body = [
+              `Auto-created by workflow from https://github.com/${process.env.UPSTREAM_REPO}.`,
+              "",
+              "If there are conflicts, resolve them in this PR and merge manually.",
+            ].join("\n");
+
+            await github.rest.pulls.create({ owner, repo, title, head, base, body });
+
+      - name: Skip creating PR because one is already open
+        if: steps.check_pr.outputs.exists == 'true' && steps.prepare.outputs.ahead_count != '0' && steps.prepare.outputs.pushed == 'true'
+        run: echo "Updated sync branch, but skipped PR creation because an open sync PR already exists."
+
+      - name: No upstream changes
+        if: steps.prepare.outputs.skip_reason == 'no_changes'
+        run: echo "No new upstream commits to sync."

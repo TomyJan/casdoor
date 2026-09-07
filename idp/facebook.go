@@ -163,10 +163,11 @@ func (idp *FacebookIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, err
 	}
 
+	idStr := oauthStableID(facebookUserInfo.Id, "", "", "", facebookUserInfo.Email)
 	userInfo := UserInfo{
-		Id:          facebookUserInfo.Id,
-		Username:    facebookUserInfo.Name,
-		DisplayName: facebookUserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", facebookUserInfo.Id, "", "", facebookUserInfo.Email),
+		DisplayName: displayNameFromNickname("", facebookUserInfo.Name, "", facebookUserInfo.Email, idStr),
 		Email:       facebookUserInfo.Email,
 		AvatarUrl:   facebookUserInfo.Picture.Data.Url,
 	}
