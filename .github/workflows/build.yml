@@ -272,8 +272,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            TomyJan/casdoor:${{ steps.version.outputs.version }}
-            ${{ steps.version.outputs.prerelease == 'false' && 'TomyJan/casdoor:latest' || '' }}
+            tomyjan/casdoor:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor:latest' || '' }}
 
       - name: Push All In One Version to Docker Hub
         uses: docker/build-push-action@v3
@@ -283,5 +283,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            TomyJan/casdoor-all-in-one:${{ steps.version.outputs.version }}
-            ${{ steps.version.outputs.prerelease == 'false' && 'TomyJan/casdoor-all-in-one:latest' || '' }}
+            tomyjan/casdoor-all-in-one:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor-all-in-one:latest' || '' }}
