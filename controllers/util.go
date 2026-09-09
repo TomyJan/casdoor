@@ -153,7 +153,8 @@ func (c *ApiController) IsOrgAdmin() (bool, bool) {
 	}
 
 	if object.IsAppUser(userId) {
-		return true, true
+		// App users are org-scoped admins; global-admin flag is reserved for built-in apps.
+		return object.IsBuiltInAppUser(userId), true
 	}
 
 	user, err := object.GetUser(userId)
