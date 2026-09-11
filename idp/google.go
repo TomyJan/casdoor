@@ -156,11 +156,12 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		}
 		idStr := oauthStableID(googleIdToken.Sub, "", "", "", googleIdToken.Email)
 		userInfo := UserInfo{
-			Id:          idStr,
-			Username:    oauthUsernamePreferLogin(googleIdToken.Email, googleIdToken.Sub, "", "", googleIdToken.Email),
-			DisplayName: displayNameFromNickname("", googleIdToken.Name, "", googleIdToken.Email, idStr),
-			Email:       googleIdToken.Email,
-			AvatarUrl:   googleIdToken.Picture,
+			Id:            idStr,
+			Username:      oauthUsernamePreferLogin(googleIdToken.Email, googleIdToken.Sub, "", "", googleIdToken.Email),
+			DisplayName:   displayNameFromNickname("", googleIdToken.Name, "", googleIdToken.Email, idStr),
+			Email:         googleIdToken.Email,
+			EmailVerified: googleIdToken.EmailVerified == "true",
+			AvatarUrl:     googleIdToken.Picture,
 		}
 		return &userInfo, nil
 	}
@@ -223,13 +224,14 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 
 	idStr := oauthStableID(googleUserInfo.Id, "", "", "", googleUserInfo.Email)
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(googleUserInfo.Email, googleUserInfo.Id, "", "", googleUserInfo.Email),
-		DisplayName: displayNameFromNickname("", googleUserInfo.Name, "", googleUserInfo.Email, idStr),
-		Email:       googleUserInfo.Email,
-		AvatarUrl:   googleUserInfo.Picture,
-		Phone:       phoneNumber,
-		CountryCode: countryCode,
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin(googleUserInfo.Email, googleUserInfo.Id, "", "", googleUserInfo.Email),
+		DisplayName:   displayNameFromNickname("", googleUserInfo.Name, "", googleUserInfo.Email, idStr),
+		Email:         googleUserInfo.Email,
+		EmailVerified: googleUserInfo.VerifiedEmail,
+		AvatarUrl:     googleUserInfo.Picture,
+		Phone:         phoneNumber,
+		CountryCode:   countryCode,
 	}
 	return &userInfo, nil
 }
