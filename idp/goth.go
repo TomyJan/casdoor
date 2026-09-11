@@ -485,12 +485,22 @@ func (idp *GothIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 }
 
 func getUser(gothUser goth.User, provider string) *UserInfo {
+	userID := stableIDChain(gothUser.UserID, oauthProviderUserID(gothUser.RawData))
+	unionID := oauthProviderUnionID(gothUser.RawData)
+	openID := oauthProviderOpenID(gothUser.RawData)
+	providerLogin := firstNonEmpty(gothUser.NickName, oauthProviderLogin(gothUser.RawData))
+	nickname := oauthProviderNickname(gothUser.RawData)
+	name := firstNonEmpty(gothUser.Name, oauthProviderName(gothUser.RawData))
+	email := firstNonEmpty(gothUser.Email, oauthProviderEmail(gothUser.RawData))
+	avatarURL := firstNonEmpty(gothUser.AvatarURL, oauthProviderAvatarURL(gothUser.RawData))
+	idStr := oauthStableID(userID, unionID, openID, "", "")
 	user := UserInfo{
-		Id:          gothUser.UserID,
-		Username:    gothUser.Name,
-		DisplayName: gothUser.NickName,
-		Email:       gothUser.Email,
-		AvatarUrl:   gothUser.AvatarURL,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(providerLogin, "", "", "", ""),
+		DisplayName: displayNameFromNickname(nickname, name, providerLogin, "", ""),
+		Email:       email,
+		UnionId:     unionID,
+		AvatarUrl:   avatarURL,
 	}
 
 	// Capture additional fields in Extra
@@ -533,16 +543,17 @@ func getUser(gothUser goth.User, provider string) *UserInfo {
 		if gothUser.FirstName != "" && gothUser.LastName != "" {
 			user.Username = getName(gothUser.FirstName, gothUser.LastName)
 		} else {
-			user.Username = gothUser.NickName
+			user.Username = firstNonEmpty(gothUser.NickName, oauthProviderLogin(gothUser.RawData))
 		}
 	}
 	if user.DisplayName == "" {
 		if gothUser.FirstName != "" && gothUser.LastName != "" {
 			user.DisplayName = getName(gothUser.FirstName, gothUser.LastName)
 		} else {
-			user.DisplayName = user.Username
+			user.DisplayName = firstNonEmpty(gothUser.Name, user.Username)
 		}
 	}
+
 	if provider == "steam" {
 		user.Username = user.Id
 		user.Email = ""

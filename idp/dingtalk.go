@@ -166,46 +166,50 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, err
 	}
 
-	userInfo := UserInfo{
-		Id:          dtUserInfo.OpenId,
-		Username:    dtUserInfo.Nick,
-		DisplayName: dtUserInfo.Nick,
-		UnionId:     dtUserInfo.UnionId,
-		Email:       dtUserInfo.Email,
-		Phone:       dtUserInfo.Mobile,
-		CountryCode: countryCode,
-		AvatarUrl:   dtUserInfo.AvatarUrl,
-	}
-
 	corpAccessToken, err := idp.getInnerAppAccessToken()
 	if err != nil {
 		return nil, err
 	}
 
-	userId, err := idp.getUserId(userInfo.UnionId, corpAccessToken)
+	corpUserId, err := idp.getUserId(dtUserInfo.UnionId, corpAccessToken)
 	if err != nil {
 		return nil, err
 	}
 
-	userDetail, err := idp.getUserCorpInfo(userId, corpAccessToken)
+	userDetail, err := idp.getUserCorpInfo(corpUserId, corpAccessToken)
+	email := dtUserInfo.Email
+	unionId := dtUserInfo.UnionId
+	var extra map[string]string
 	if err == nil {
 		if userDetail.Mobile != "" {
-			userInfo.Phone = userDetail.Mobile
+			dtUserInfo.Mobile = userDetail.Mobile
 		}
-
 		if userDetail.Email != "" {
-			userInfo.Email = userDetail.Email
+			email = userDetail.Email
 		}
-
 		if userDetail.UnionId != "" {
-			userInfo.Username = userDetail.UnionId
+			unionId = userDetail.UnionId
 		}
-
 		if userDetail.Title != "" {
-			userInfo.Extra = map[string]string{
+			extra = map[string]string{
 				"title": userDetail.Title,
 			}
 		}
+	}
+
+	idStr := oauthStableID(corpUserId, unionId, dtUserInfo.OpenId, "", email)
+	usernameStr := oauthUsernamePreferLogin("", corpUserId, unionId, dtUserInfo.OpenId, email)
+
+	userInfo := UserInfo{
+		Id:          idStr,
+		Username:    usernameStr,
+		DisplayName: displayNameFromNickname(dtUserInfo.Nick, "", "", email, idStr),
+		UnionId:     unionId,
+		Email:       email,
+		Phone:       dtUserInfo.Mobile,
+		CountryCode: countryCode,
+		AvatarUrl:   dtUserInfo.AvatarUrl,
+		Extra:       extra,
 	}
 
 	return &userInfo, nil

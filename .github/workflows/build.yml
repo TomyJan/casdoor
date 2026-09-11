@@ -53,7 +53,7 @@ jobs:
       - run: CI=false yarn run build
         working-directory: ./web
       - name: Upload build artifacts
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build-${{ github.run_id }}
@@ -187,7 +187,7 @@ jobs:
     permissions:
       contents: write
     # Releases are cut by hand: push a `vX.Y.Z` tag and this job publishes it.
-    if: github.repository == 'casdoor/casdoor' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'TomyJan/casdoor' && startsWith(github.ref, 'refs/tags/v')
     needs: [frontend, backend, linter, e2e]
     steps:
       - name: Checkout
@@ -236,7 +236,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: github.repository == 'casdoor/casdoor' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'TomyJan/casdoor' && startsWith(github.ref, 'refs/tags/v')
     needs: [frontend, backend, linter, e2e]
     steps:
       - name: Checkout
@@ -283,8 +283,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            casbin/casdoor:${{ steps.version.outputs.version }}
-            ${{ steps.version.outputs.prerelease == 'false' && 'casbin/casdoor:latest' || '' }}
+            tomyjan/casdoor:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor:latest' || '' }}
 
       - name: Push All In One Version to Docker Hub
         uses: docker/build-push-action@v3
@@ -294,14 +294,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            casbin/casdoor-all-in-one:${{ steps.version.outputs.version }}
-            ${{ steps.version.outputs.prerelease == 'false' && 'casbin/casdoor-all-in-one:latest' || '' }}
-
-      - name: Package and push Helm chart
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          REGISTRY=oci://registry-1.docker.io/casbin
-
-          helm package manifests/casdoor --version "$VERSION" --app-version "$VERSION"
-          helm push casdoor-helm-charts-$VERSION.tgz $REGISTRY
+            tomyjan/casdoor-all-in-one:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor-all-in-one:latest' || '' }}
