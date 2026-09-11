@@ -228,7 +228,7 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		Username:      oauthUsernamePreferLogin(googleUserInfo.Email, googleUserInfo.Id, "", "", googleUserInfo.Email),
 		DisplayName:   displayNameFromNickname("", googleUserInfo.Name, "", googleUserInfo.Email, idStr),
 		Email:         googleUserInfo.Email,
-    EmailVerified: googleUserInfo.VerifiedEmail,
+		EmailVerified: googleUserInfo.VerifiedEmail,
 		AvatarUrl:     googleUserInfo.Picture,
 		Phone:         phoneNumber,
 		CountryCode:   countryCode,
