@@ -160,7 +160,7 @@ func (idp *GoogleIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 			Username:      oauthUsernamePreferLogin(googleIdToken.Email, googleIdToken.Sub, "", "", googleIdToken.Email),
 			DisplayName:   displayNameFromNickname("", googleIdToken.Name, "", googleIdToken.Email, idStr),
 			Email:         googleIdToken.Email,
-      EmailVerified: googleIdToken.EmailVerified == "true",
+            EmailVerified: googleIdToken.EmailVerified == "true",
 			AvatarUrl:     googleIdToken.Picture,
 		}
 		return &userInfo, nil
