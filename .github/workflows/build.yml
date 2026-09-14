@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # Releases are cut by hand: push a `vX.Y.Z` tag and this job publishes it.
+    # The tag-release workflow pushes `vX.Y.Z` tags to publish a release.
     if: github.repository == 'TomyJan/casdoor' && startsWith(github.ref, 'refs/tags/v')
     needs: [frontend, backend, linter, e2e]
     steps:
