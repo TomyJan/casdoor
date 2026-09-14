@@ -230,6 +230,9 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Multiple version tags may point at the same commit. Use the tag
+          # that triggered this run, not the one chosen by git describe.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
   docker-release:
     name: Docker Release
