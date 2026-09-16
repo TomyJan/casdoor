@@ -1037,14 +1037,42 @@ func ParseAppUserId(userId string) (org, appName string) {
 	return owner, name
 }
 
+// GetAppUser returns the virtual administrator represented by an application
+// credential. The application's persisted organization is authoritative; an
+// organization embedded in the new typed ID must match it.
+func GetAppUser(userId string) (*User, error) {
+	if !IsAppUser(userId) {
+		return nil, nil
+	}
+
+	organization, appName := ParseAppUserId(userId)
+	application, err := getApplication("admin", appName)
+	if err != nil || application == nil {
+		return nil, err
+	}
+
+	_, _, _, parseErr := util.ParseUserId(userId)
+	if parseErr == nil && strings.Count(userId, "/") == 2 && organization != application.Organization {
+		return nil, nil
+	}
+
+	return &User{Owner: application.Organization, Name: userId, IsAdmin: true}, nil
+}
+
+// GetUserOrAppUser returns either a persisted user or the virtual user for an
+// application credential.
+func GetUserOrAppUser(userId string) (*User, error) {
+	if IsAppUser(userId) {
+		return GetAppUser(userId)
+	}
+	return GetUser(userId)
+}
+
 // IsBuiltInAppUser reports whether the app credential belongs to the built-in
 // organization (i.e. should have global-admin access).
 func IsBuiltInAppUser(userId string) bool {
-	if !IsAppUser(userId) {
-		return false
-	}
-	org, _ := ParseAppUserId(userId)
-	return org == "built-in"
+	user, err := GetAppUser(userId)
+	return err == nil && user != nil && user.IsGlobalAdmin()
 }
 
 func setReflectAttr[T any](fieldValue *reflect.Value, fieldString string) error {

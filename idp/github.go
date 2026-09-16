@@ -264,12 +264,12 @@ func (idp *GithubIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 	uid := strconv.Itoa(githubUserInfo.Id)
 	idStr := oauthStableID(uid, "", "", "", "")
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(githubUserInfo.Login, "", "", "", ""),
-		DisplayName: displayNameFromNickname("", githubUserInfo.Name, githubUserInfo.Login, "", ""),
-
-		Email:     githubUserInfo.Email,
-		AvatarUrl: githubUserInfo.AvatarUrl,
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin(githubUserInfo.Login, "", "", "", ""),
+		DisplayName:   displayNameFromNickname("", githubUserInfo.Name, githubUserInfo.Login, "", ""),
+		Email:         githubUserInfo.Email,
+		EmailVerified: githubUserInfo.Email != "",
+		AvatarUrl:     githubUserInfo.AvatarUrl,
 	}
 	return &userInfo, nil
 }

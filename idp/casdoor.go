@@ -108,13 +108,14 @@ func (idp *CasdoorIdProvider) GetToken(code string) (*oauth2.Token, error) {
 */
 
 type CasdoorUserInfo struct {
-	Id          string `json:"sub"`
-	Name        string `json:"preferred_username,omitempty"`
-	DisplayName string `json:"name"`
-	Email       string `json:"email"`
-	AvatarUrl   string `json:"picture"`
-	Status      string `json:"status"`
-	Msg         string `json:"msg"`
+	Id            string `json:"sub"`
+	Name          string `json:"preferred_username,omitempty"`
+	DisplayName   string `json:"name"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	AvatarUrl     string `json:"picture"`
+	Status        string `json:"status"`
+	Msg           string `json:"msg"`
 }
 
 func (idp *CasdoorIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
@@ -148,11 +149,12 @@ func (idp *CasdoorIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error
 
 	idStr := oauthStableID(cdUserinfo.Id, "", "", cdUserinfo.Name, cdUserinfo.Email)
 	userInfo := &UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(cdUserinfo.Name, cdUserinfo.Id, "", "", cdUserinfo.Email),
-		DisplayName: displayNameFromNickname("", cdUserinfo.DisplayName, cdUserinfo.Name, cdUserinfo.Email, idStr),
-		Email:       cdUserinfo.Email,
-		AvatarUrl:   cdUserinfo.AvatarUrl,
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin(cdUserinfo.Name, cdUserinfo.Id, "", "", cdUserinfo.Email),
+		DisplayName:   displayNameFromNickname("", cdUserinfo.DisplayName, cdUserinfo.Name, cdUserinfo.Email, idStr),
+		Email:         cdUserinfo.Email,
+		EmailVerified: cdUserinfo.EmailVerified,
+		AvatarUrl:     cdUserinfo.AvatarUrl,
 	}
 	return userInfo, nil
 }

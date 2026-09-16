@@ -201,15 +201,16 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 	usernameStr := oauthUsernamePreferLogin("", corpUserId, unionId, dtUserInfo.OpenId, email)
 
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    usernameStr,
-		DisplayName: displayNameFromNickname(dtUserInfo.Nick, "", "", email, idStr),
-		UnionId:     unionId,
-		Email:       email,
-		Phone:       dtUserInfo.Mobile,
-		CountryCode: countryCode,
-		AvatarUrl:   dtUserInfo.AvatarUrl,
-		Extra:       extra,
+		Id:            idStr,
+		Username:      usernameStr,
+		DisplayName:   displayNameFromNickname(dtUserInfo.Nick, "", "", email, idStr),
+		UnionId:       unionId,
+		Email:         email,
+		EmailVerified: email != "",
+		Phone:         dtUserInfo.Mobile,
+		CountryCode:   countryCode,
+		AvatarUrl:     dtUserInfo.AvatarUrl,
+		Extra:         extra,
 	}
 
 	return &userInfo, nil

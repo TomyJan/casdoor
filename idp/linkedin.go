@@ -300,11 +300,12 @@ func (idp *LinkedInIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 	email := linkedInUserEmail.Elements[0].Handle.EmailAddress
 	idStr := oauthStableID(linkedInUserInfo.Id, "", "", "", email)
 	userInfo := UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin("", linkedInUserInfo.Id, "", "", email),
-		DisplayName: displayNameFromNickname("", fullName, "", email, idStr),
-		Email:       email,
-		AvatarUrl:   linkedInUserInfo.ProfilePicture.DisplayImage1.Elements[0].Identifiers[0].Identifier,
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin("", linkedInUserInfo.Id, "", "", email),
+		DisplayName:   displayNameFromNickname("", fullName, "", email, idStr),
+		Email:         email,
+		EmailVerified: email != "",
+		AvatarUrl:     linkedInUserInfo.ProfilePicture.DisplayImage1.Elements[0].Identifiers[0].Identifier,
 	}
 	return &userInfo, nil
 }

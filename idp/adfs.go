@@ -154,10 +154,11 @@ func (idp *AdfsIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 	upnStr := upn.(string)
 	idStr := oauthStableID(sidStr, "", "", "", upnStr)
 	userinfo := &UserInfo{
-		Id:          idStr,
-		Username:    oauthUsernamePreferLogin(nameStr, sidStr, "", "", upnStr),
-		DisplayName: displayNameFromNickname("", nameStr, nameStr, upnStr, idStr),
-		Email:       upnStr,
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin(nameStr, sidStr, "", "", upnStr),
+		DisplayName:   displayNameFromNickname("", nameStr, nameStr, upnStr, idStr),
+		Email:         upnStr,
+		EmailVerified: upnStr != "",
 	}
 	return userinfo, nil
 }

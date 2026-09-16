@@ -178,7 +178,9 @@ func (idp *TwitterIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error
 		Username:    oauthUsernamePreferLogin(TwitterUserInfo.UserName, TwitterUserInfo.Id, "", "", TwitterUserInfo.Email),
 		DisplayName: displayNameFromNickname("", TwitterUserInfo.Name, TwitterUserInfo.UserName, TwitterUserInfo.Email, idStr),
 		Email:       TwitterUserInfo.Email,
-		AvatarUrl:   TwitterUserInfo.Picture.Data.Url,
+		// Twitter only returns the account's confirmed email
+		EmailVerified: TwitterUserInfo.Email != "",
+		AvatarUrl:     TwitterUserInfo.Picture.Data.Url,
 	}
 	return &userInfo, nil
 }

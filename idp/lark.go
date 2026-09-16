@@ -228,9 +228,11 @@ func (idp *LarkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 		DisplayName: displayNameFromNickname(larkUserInfo.Data.Name, larkUserInfo.Data.EnName, "", email, idStr),
 		UnionId:     larkUserInfo.Data.UnionId,
 		Email:       email,
-		AvatarUrl:   larkUserInfo.Data.AvatarUrl,
-		Phone:       phoneNumber,
-		CountryCode: countryCode,
+		// enterprise directory email
+		EmailVerified: email != "",
+		AvatarUrl:     larkUserInfo.Data.AvatarUrl,
+		Phone:         phoneNumber,
+		CountryCode:   countryCode,
 	}
 	return &userInfo, nil
 }

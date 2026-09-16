@@ -169,7 +169,9 @@ func (idp *FacebookIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		Username:    oauthUsernamePreferLogin("", facebookUserInfo.Id, "", "", facebookUserInfo.Email),
 		DisplayName: displayNameFromNickname("", facebookUserInfo.Name, "", facebookUserInfo.Email, idStr),
 		Email:       facebookUserInfo.Email,
-		AvatarUrl:   facebookUserInfo.Picture.Data.Url,
+		// Facebook only returns confirmed emails
+		EmailVerified: facebookUserInfo.Email != "",
+		AvatarUrl:     facebookUserInfo.Picture.Data.Url,
 	}
 	return &userInfo, nil
 }

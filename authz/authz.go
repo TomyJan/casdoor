@@ -205,7 +205,17 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 	}
 
 	if subOwner == "app" {
-		return true, nil
+		appUser, err := object.GetAppUser(util.GetId(subOwner, subName))
+		if err != nil {
+			return false, err
+		}
+		if appUser == nil {
+			return false, nil
+		}
+
+		if appUser.IsGlobalAdmin() || appUser.Owner == objOwner {
+			return true, nil
+		}
 	}
 
 	user, err := object.GetUser(util.GetId(subOwner, subName))
