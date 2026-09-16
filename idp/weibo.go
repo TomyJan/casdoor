@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -208,8 +209,8 @@ type WeiboUserinfo struct {
 func (idp *WeiBoIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 	var weiboUserInfo WeiboUserinfo
 	accessToken := token.AccessToken
-	uid := idp.Config.Scopes[0]
-	id, _ := strconv.Atoi(uid)
+	scopeUIDStr := idp.Config.Scopes[0]
+	id, _ := strconv.Atoi(scopeUIDStr)
 
 	userInfoUrl := fmt.Sprintf("https://api.weibo.com/2/users/show.json?access_token=%s&uid=%d", accessToken, id)
 	resp, err := idp.GetUrlResp(userInfoUrl)
@@ -233,10 +234,14 @@ func (idp *WeiBoIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) 
 		return nil, err
 	}
 
+	weiboUid := strconv.Itoa(weiboUserInfo.Id)
+	scopeUID := strings.TrimSpace(scopeUIDStr)
+	weiboUIDMerged := stableIDChain(weiboUid, scopeUID)
+	idStr := oauthStableID(weiboUIDMerged, "", "", "", e.Email)
 	userInfo := UserInfo{
-		Id:          strconv.Itoa(weiboUserInfo.Id),
-		Username:    weiboUserInfo.Name,
-		DisplayName: weiboUserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(weiboUserInfo.ScreenName, weiboUIDMerged, "", "", e.Email),
+		DisplayName: displayNameFromNickname(weiboUserInfo.Name, "", weiboUserInfo.ScreenName, e.Email, idStr),
 		AvatarUrl:   weiboUserInfo.AvatarLarge,
 		Email:       e.Email,
 	}

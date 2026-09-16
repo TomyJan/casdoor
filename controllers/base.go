@@ -101,10 +101,12 @@ func (c *ApiController) requireOrganizationPermission(organization string) bool 
 func (c *ApiController) isGlobalAdmin() (bool, *object.User) {
 	username := c.GetSessionUsername()
 	if object.IsAppUser(username) {
-		// e.g., "app/app-casnode", an admin of the application's organization
 		appUser, err := object.GetAppUser(username)
 		if err != nil {
 			c.ResponseError(err.Error())
+			return false, nil
+		}
+		if appUser == nil {
 			return false, nil
 		}
 		return appUser.IsGlobalAdmin(), appUser

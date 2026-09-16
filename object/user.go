@@ -1438,10 +1438,16 @@ func isUserIdGlobalAdmin(userId string) (bool, error) {
 	if strings.HasPrefix(userId, "built-in/") {
 		return true, nil
 	}
+	if !IsAppUser(userId) {
+		return false, nil
+	}
 
 	appUser, err := GetAppUser(userId)
 	if err != nil {
 		return false, err
+	}
+	if appUser == nil {
+		return false, nil
 	}
 	return appUser.IsGlobalAdmin(), nil
 }
