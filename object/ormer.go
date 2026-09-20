@@ -273,6 +273,29 @@ func (a *Ormer) CreateDatabase() error {
 	return err
 }
 
+func setPostgresSchema(engine *xorm.Engine, dataSourceName string) error {
+	schema := util.GetValueFromDataSourceName("search_path", dataSourceName)
+	if schema != "" {
+		engine.SetSchema(schema)
+		return nil
+	}
+
+	// xorm assumes "public" otherwise, but CREATE TABLE follows the connection's search_path
+	results, err := engine.Query("SELECT current_schema() AS schema")
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		return nil
+	}
+
+	schema = string(results[0]["schema"])
+	if schema != "" && schema != "public" {
+		engine.SetSchema(schema)
+	}
+	return nil
+}
+
 func (a *Ormer) open() error {
 	dataSourceName := a.dataSourceName + a.dbName
 	if a.driverName != "mysql" {
@@ -289,9 +312,9 @@ func (a *Ormer) open() error {
 	}
 
 	if a.driverName == "postgres" {
-		schema := util.GetValueFromDataSourceName("search_path", dataSourceName)
-		if schema != "" {
-			engine.SetSchema(schema)
+		err = setPostgresSchema(engine, dataSourceName)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -317,9 +340,9 @@ func (a *Ormer) openFromDb(db *sql.DB) error {
 	}
 
 	if a.driverName == "postgres" {
-		schema := util.GetValueFromDataSourceName("search_path", dataSourceName)
-		if schema != "" {
-			engine.SetSchema(schema)
+		err = setPostgresSchema(engine, dataSourceName)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -482,6 +505,11 @@ func (a *Ormer) createTable() {
 	}
 
 	err = a.Engine.Sync2(new(VerificationRecord))
+	if err != nil {
+		panic(err)
+	}
+
+	err = a.Engine.Sync2(new(MagicLink))
 	if err != nil {
 		panic(err)
 	}

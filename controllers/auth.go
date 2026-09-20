@@ -107,8 +107,8 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		}
 	}
 
-	// check whether paid-user have active subscription
-	if user.Type == "paid-user" {
+	// check whether paid-user have active subscription, admins are never locked out by it
+	if user.Type == "paid-user" && !user.IsGlobalAdmin() && !user.IsAdmin {
 		subscriptions, err := object.GetSubscriptionsByUser(user.Owner, user.Name)
 		if err != nil {
 			c.ResponseError(err.Error())
@@ -359,6 +359,24 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 			c.ResponseError(err.Error(), nil)
 			return
 		}
+
+		// The policy comes from the user's organization, a shared application must not impose
+		// the setting of its own organization on the users of another one
+		organization := application.OrganizationObj
+		if organization == nil || organization.Name != user.Owner {
+			organization, err = object.GetOrganizationByUser(user)
+			if err != nil {
+				c.ResponseError(err.Error(), nil)
+				return
+			}
+		}
+		if organization != nil && organization.EnableExclusiveSignin {
+			err = object.EnforceSingleBrowserSession(user, sessionId, c.Ctx.Request.Host)
+			if err != nil {
+				c.ResponseError(err.Error(), nil)
+				return
+			}
+		}
 	}
 
 	return resp
@@ -597,9 +615,19 @@ func (c *ApiController) Login() {
 
 	verificationType := ""
 
-	if authForm.Username != "" {
+	// a magic link posts no username, the one-time token in the link is the credential.
+	// The passcode of a sign-in that already asked for MFA is answered further below
+	isMagicLinkSignin := authForm.SigninMethod == "Magic link" && c.getMfaUserSession() == ""
+
+	if authForm.Username != "" || isMagicLinkSignin {
 		var user *object.User
-		if authForm.SigninMethod == "Face ID" {
+		if isMagicLinkSignin {
+			// the one-time link in the email is the credential, it proves the address
+			user, err = c.checkMagicLinkSignin(&authForm)
+			if err == nil {
+				verificationType = "email"
+			}
+		} else if authForm.SigninMethod == "Face ID" {
 			var application *object.Application
 			application, err = object.GetApplication(fmt.Sprintf("admin/%s", authForm.Application))
 			if err != nil {
