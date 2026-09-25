@@ -32,6 +32,10 @@ import (
 // @Success 200 {array} object.User The Response object
 // @router /get-global-users [get]
 func (c *ApiController) GetGlobalUsers() {
+	if !c.requireGlobalAdmin() {
+		return
+	}
+
 	limit := c.Ctx.Input.Query("pageSize")
 	page := c.Ctx.Input.Query("p")
 	field := c.Ctx.Input.Query("field")
@@ -292,6 +296,11 @@ func (c *ApiController) UpdateUser() {
 			return
 		}
 
+		if !c.IsAdminOrSelf(userFromUserId) {
+			c.ResponseError(c.T("auth:Unauthorized operation"))
+			return
+		}
+
 		id = util.GetId(userFromUserId.Owner, userFromUserId.Name)
 	}
 
@@ -361,6 +370,13 @@ func (c *ApiController) UpdateUser() {
 	if columnsStr != "" {
 		for _, col := range strings.Split(columnsStr, ",") {
 			columns = append(columns, util.CamelToSnakeCase(col))
+		}
+		if !isAdmin {
+			columns = object.FilterUserSelfColumns(columns)
+			if len(columns) == 0 {
+				c.ResponseError(c.T("auth:Unauthorized operation"))
+				return
+			}
 		}
 	}
 

@@ -53,7 +53,58 @@ func tokenToResponse(token *object.Token) *Response {
 	if token.AccessToken == "" {
 		return &Response{Status: "error", Msg: "fail to get accessToken", Data: token.AccessToken}
 	}
-	return &Response{Status: "ok", Msg: "", Data: token.AccessToken, Data2: token.RefreshToken}
+	return &Response{Status: "ok", Msg: "", Data: token.AccessToken, Data2: token.RefreshToken, Data3: token.IdToken}
+}
+
+func (c *ApiController) checkUserOfApplication(user *object.User, application *object.Application) bool {
+	isUserOfApplication, err := object.IsUserOfApplication(user, application)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return false
+	}
+	if !isUserOfApplication {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return false
+	}
+	return true
+}
+
+func (c *ApiController) checkUserOfApplicationId(user *object.User, applicationId string) bool {
+	application, err := object.GetApplication(applicationId)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return false
+	}
+	if application == nil {
+		c.ResponseError(fmt.Sprintf(c.T("auth:The application: %s does not exist"), applicationId))
+		return false
+	}
+	return c.checkUserOfApplication(user, application)
+}
+
+func (c *ApiController) checkCredentialApplication(user *object.User, application *object.Application, form *form.AuthForm) bool {
+	if form.Type == ResponseTypeLogin {
+		return true
+	}
+
+	if !c.checkUserOfApplication(user, application) {
+		return false
+	}
+
+	if form.Type != ResponseTypeCode {
+		return true
+	}
+
+	codeApplication, err := object.GetApplicationByClientId(c.Ctx.Input.Query("clientId"))
+	if err != nil {
+		c.ResponseError(err.Error())
+		return false
+	}
+	if codeApplication == nil || codeApplication.Name != application.Name {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return false
+	}
+	return true
 }
 
 // HandleLoggedIn ...
@@ -94,6 +145,10 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 	}
 	if !allowed {
 		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return
+	}
+
+	if !c.checkCredentialApplication(user, application, form) {
 		return
 	}
 
@@ -255,7 +310,10 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		}
 
 		deviceAuthCacheDeviceCodeCast := deviceAuthCacheDeviceCode.(object.DeviceAuthCache)
-		deviceAuthCacheDeviceCodeCast.UserName = user.Name
+		if !c.checkUserOfApplicationId(user, deviceAuthCacheDeviceCodeCast.ApplicationId) {
+			return
+		}
+		deviceAuthCacheDeviceCodeCast.UserName = user.GetId()
 		deviceAuthCacheDeviceCodeCast.UserSignIn = true
 		deviceAuthCacheDeviceCodeCast.Status = object.DeviceAuthStatusApproved
 
@@ -558,7 +616,7 @@ func getExistUserByBindingRule(providerItem *object.ProviderItem, application *o
 		// existing users when usernames match, particularly useful for enterprise
 		// scenarios where signup is disabled and users already exist in Casdoor
 		if rule == "Name" {
-			user, err = object.GetUserByFields(application.Organization, userInfo.Username)
+			user, err = object.GetUserByName(application.Organization, userInfo.Username)
 			if err != nil {
 				return nil, err
 			}
@@ -732,6 +790,11 @@ func (c *ApiController) Login() {
 				}
 			} else if verificationCodeType == object.VerifyTypeEmail {
 				checkDest = authForm.Username
+			}
+
+			if !object.IsUserVerifyDest(user, checkDest, authForm.CountryCode) {
+				c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), util.GetId(authForm.Organization, authForm.Username)))
+				return
 			}
 
 			// check result through Email or Phone
@@ -940,7 +1003,7 @@ func (c *ApiController) Login() {
 				return
 			}
 			c.DelSession(SamlRequestIdSessionKey)
-		} else if provider.Category == "OAuth" || provider.Category == "Web3" {
+		} else if provider.Category == "OAuth" {
 			// OAuth
 			idpInfo, err := object.FromProviderToIdpInfo(c.Ctx, provider)
 			if err != nil {
@@ -1016,7 +1079,7 @@ func (c *ApiController) Login() {
 					c.ResponseError(err.Error())
 					return
 				}
-			} else if provider.Category == "OAuth" || provider.Category == "Web3" || object.IsFlexibleCustomProvider(provider.Type) {
+			} else if provider.Category == "OAuth" || object.IsFlexibleCustomProvider(provider.Type) {
 				user, err = getUserByProvider(application.Organization, provider, userInfo.Id)
 				if err != nil {
 					c.ResponseError(err.Error())
@@ -1040,7 +1103,7 @@ func (c *ApiController) Login() {
 				resp = c.HandleLoggedIn(application, user, &authForm)
 
 				c.Ctx.Input.SetParam("recordUserId", user.GetId())
-			} else if provider.Category == "OAuth" || provider.Category == "Web3" || provider.Category == "SAML" {
+			} else if provider.Category == "OAuth" || provider.Category == "SAML" {
 				// Sign up via OAuth
 				user, err = getExistUserByBindingRule(providerItem, application, userInfo)
 				if err != nil {
@@ -1050,7 +1113,7 @@ func (c *ApiController) Login() {
 				isBoundUser := user != nil
 
 				if user == nil {
-					if !application.EnableSignUp {
+					if !application.EnableSignUp || !application.IsSignupAllowedFor(application.Organization) {
 						c.ResponseError(fmt.Sprintf(c.T("auth:The account for provider: %s and username: %s (%s) does not exist and is not allowed to sign up as new account, please contact your IT support"), provider.Type, userInfo.Username, userInfo.DisplayName))
 						return
 					}
@@ -1101,7 +1164,7 @@ func (c *ApiController) Login() {
 						}
 					}
 
-					// Handle UseEmailAsUsername for OAuth and Web3
+					// Handle UseEmailAsUsername for OAuth
 					if organization.UseEmailAsUsername && userInfo.Email != "" {
 						userInfo.Username = userInfo.Email
 					}
@@ -1317,25 +1380,22 @@ func (c *ApiController) Login() {
 				return
 			}
 			user.CountryCode = user.GetCountryCode(user.CountryCode)
-			mfaUtil := object.GetMfaUtil(authForm.MfaType, user.GetMfaProps(authForm.MfaType, false))
+			mfaProps := user.GetMfaProps(authForm.MfaType, false)
+			if !mfaProps.Enabled {
+				c.ResponseError("Invalid multi-factor authentication type")
+				return
+			}
+			mfaUtil := object.GetMfaUtil(authForm.MfaType, mfaProps)
 			if mfaUtil == nil {
 				c.ResponseError("Invalid multi-factor authentication type")
 				return
 			}
 
-			passed, err := c.checkOrgMasterVerificationCode(user, authForm.Passcode)
+			err = object.VerifyMfaWithLimit(user, func() error { return c.verifyMfaPasscode(user, mfaUtil, authForm.Passcode) }, c.GetAcceptLanguage())
 			if err != nil {
+				c.Ctx.Input.SetParam("recordDetail", object.SigninReasonMfaFailed)
 				c.ResponseError(err.Error())
 				return
-			}
-
-			if !passed {
-				err = mfaUtil.Verify(authForm.Passcode)
-				if err != nil {
-					c.Ctx.Input.SetParam("recordDetail", object.SigninReasonMfaFailed)
-					c.ResponseError(err.Error())
-					return
-				}
 			}
 
 			if authForm.EnableMfaRemember {
@@ -1351,7 +1411,7 @@ func (c *ApiController) Login() {
 			}
 			c.SetSession("verificationCodeType", "")
 		} else if authForm.RecoveryCode != "" {
-			err = object.MfaRecover(user, authForm.RecoveryCode)
+			err = object.VerifyMfaWithLimit(user, func() error { return object.MfaRecover(user, authForm.RecoveryCode) }, c.GetAcceptLanguage())
 			if err != nil {
 				c.Ctx.Input.SetParam("recordDetail", object.SigninReasonMfaFailed)
 				c.ResponseError(err.Error())
@@ -1812,7 +1872,7 @@ func (c *ApiController) DeviceAuthComplete() {
 		return
 	}
 
-	user, err := object.GetUserByFields(application.Organization, deviceAuthCache.UserName)
+	user, err := object.GetUser(deviceAuthCache.UserName)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return

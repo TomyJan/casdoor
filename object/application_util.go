@@ -282,7 +282,7 @@ func GetMaskedApplication(application *Application, userId string) *Application 
 		}
 
 		category := providerItem.Provider.Category
-		if category == "OAuth" || category == "Web3" || category == "Captcha" || category == "SAML" || category == "Face ID" {
+		if category == "OAuth" || category == "Captcha" || category == "SAML" || category == "Face ID" {
 			providerItems = append(providerItems, providerItem)
 		} else if category == "Email" || category == "SMS" {
 			// The login pages need to know whether an Email or SMS provider is available,
@@ -627,6 +627,13 @@ func (application *Application) IsMagicLinkSignupEnabled() bool {
 	}
 
 	return false
+}
+
+func (application *Application) IsSignupAllowedFor(organization string) bool {
+	if application.IsShared {
+		return organization != "built-in"
+	}
+	return organization == application.Organization
 }
 
 func (application *Application) IsLdapEnabled() bool {

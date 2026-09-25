@@ -196,8 +196,6 @@ type User struct {
 	Yammer          string `xorm:"yammer varchar(100)" json:"yammer"`
 	Yandex          string `xorm:"yandex varchar(100)" json:"yandex"`
 	Zoom            string `xorm:"zoom varchar(100)" json:"zoom"`
-	MetaMask        string `xorm:"metamask varchar(100)" json:"metamask"`
-	Web3Onboard     string `xorm:"web3onboard varchar(100)" json:"web3onboard"`
 	Oidc            string `xorm:"oidc varchar(100)" json:"oidc"`
 	Custom          string `xorm:"custom varchar(100)" json:"custom"`
 	Custom2         string `xorm:"custom2 text" json:"custom2"`
@@ -691,6 +689,7 @@ func GetMaskedUser(user *User, isAdminOrSelf bool, errs ...error) (*User, error)
 		if user.OriginalRefreshToken != "" {
 			user.OriginalRefreshToken = "***"
 		}
+		user.FaceIds = nil
 		// Mask per-provider OAuth tokens in Properties
 		if user.Properties != nil {
 			for key := range user.Properties {
@@ -809,6 +808,31 @@ func getLastUser(owner string) (*User, error) {
 	return nil, nil
 }
 
+var userSelfColumns = []string{
+	"owner", "display_name", "avatar", "first_name", "last_name",
+	"location", "address", "addresses", "country_code", "region", "language", "affiliation", "title", "id_card_type", "id_card", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application", "register_type", "register_source",
+	"hash", "is_default_avatar", "properties", "webauthnCredentials", "mfa_items", "last_change_password_time", "managedAccounts", "face_ids", "mfaAccounts",
+	"signin_wrong_times", "last_signin_wrong_time", "groups", "mfa_phone_enabled", "mfa_email_enabled",
+	"github", "google", "qq", "wechat", "facebook", "dingtalk", "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs",
+	"baidu", "alipay", "casdoor", "infoflow", "apple", "azuread", "azureadb2c", "slack", "steam", "bilibili", "okta", "douyin", "kwai", "line", "amazon",
+	"auth0", "battlenet", "bitbucket", "box", "cloudfoundry", "dailymotion", "deezer", "digitalocean", "discord", "dropbox",
+	"eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru", "meetup",
+	"microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify", "soundcloud",
+	"spotify", "strava", "stripe", "type", "telegram", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
+	"yammer", "yandex", "zoom", "oidc", "custom", "need_update_password", "ip_whitelist", "mfa_remember_deadline",
+	"cart", "application_scopes",
+}
+
+func FilterUserSelfColumns(columns []string) []string {
+	res := []string{}
+	for _, column := range columns {
+		if util.InSlice(userSelfColumns, column) {
+			res = append(res, column)
+		}
+	}
+	return res
+}
+
 func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, error) {
 	var err error
 	owner, name := util.GetOwnerAndNameFromIdNoCheck(id)
@@ -848,6 +872,10 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 		user.Password = oldUser.Password
 	}
 
+	if user.FaceIds == nil {
+		user.FaceIds = oldUser.FaceIds
+	}
+
 	if user.Id != oldUser.Id && user.Id == "" {
 		user.Id = oldUser.Id
 	}
@@ -860,24 +888,11 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 	}
 
 	if len(columns) == 0 {
-		columns = []string{
-			"owner", "display_name", "avatar", "first_name", "last_name",
-			"location", "address", "addresses", "country_code", "region", "language", "affiliation", "title", "id_card_type", "id_card", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application", "register_type", "register_source",
-			"hash", "is_default_avatar", "properties", "webauthnCredentials", "mfa_items", "last_change_password_time", "managedAccounts", "face_ids", "mfaAccounts",
-			"signin_wrong_times", "last_signin_wrong_time", "groups", "mfa_phone_enabled", "mfa_email_enabled", "email_verified",
-			"github", "google", "qq", "wechat", "facebook", "dingtalk", "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs",
-			"baidu", "alipay", "casdoor", "infoflow", "apple", "azuread", "azureadb2c", "slack", "steam", "bilibili", "okta", "douyin", "kwai", "line", "amazon",
-			"auth0", "battlenet", "bitbucket", "box", "cloudfoundry", "dailymotion", "deezer", "digitalocean", "discord", "dropbox",
-			"eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru", "meetup",
-			"microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify", "soundcloud",
-			"spotify", "strava", "stripe", "type", "telegram", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
-			"yammer", "yandex", "zoom", "oidc", "custom", "need_update_password", "ip_whitelist", "mfa_remember_deadline",
-			"cart", "application_scopes",
-		}
+		columns = append([]string{}, userSelfColumns...)
 
 		if isAdmin {
 			columns = append(columns, "name", "id", "email", "phone", "country_code", "type", "balance", "balance_credit", "balance_currency", "mfa_items", "register_type", "register_source",
-				"is_admin", "is_forbidden", "is_deleted", "uid_number")
+				"is_admin", "is_forbidden", "is_deleted", "uid_number", "email_verified")
 		}
 	}
 
@@ -1595,7 +1610,7 @@ func (user *User) IsApplicationAdmin(application *Application) bool {
 		return false
 	}
 
-	return (user.Owner == application.Organization && user.IsAdmin) || user.IsGlobalAdmin() || (user.IsAdmin && application.IsShared)
+	return (user.Owner == application.Organization && user.IsAdmin) || user.IsGlobalAdmin()
 }
 
 func (user *User) IsGlobalAdmin() bool {

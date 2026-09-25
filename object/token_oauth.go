@@ -95,7 +95,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		// The user has already authenticated via browser in the device flow,
 		// so we skip password verification and mint a token directly.
-		token, tokenError, err = mintImplicitToken(application, username, scope, nonce, host)
+		token, tokenError, err = GetDeviceCodeToken(application, username, scope, nonce, host)
 	case "urn:ietf:params:oauth:grant-type:token-exchange": // Token Exchange Grant (RFC 8693)
 		token, tokenError, err = GetTokenExchangeToken(application, clientSecret, subjectToken, subjectTokenType, audience, scope, host)
 	case "refresh_token":
@@ -140,7 +140,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 
 	tokenWrapper := &TokenWrapper{
 		AccessToken:  token.AccessToken,
-		IdToken:      token.AccessToken,
+		IdToken:      token.IdToken,
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,
 		ExpiresIn:    token.ExpiresIn,
@@ -297,6 +297,10 @@ func GetPasswordToken(application *Application, username string, password string
 		}, nil
 	}
 
+	if tokenError := getMfaUserTokenError(user); tokenError != nil {
+		return nil, tokenError, nil
+	}
+
 	if user.IsForbidden {
 		return nil, &TokenError{
 			Error:            InvalidGrant,
@@ -309,7 +313,7 @@ func GetPasswordToken(application *Application, username string, password string
 		return nil, nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, "", host)
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -334,6 +338,7 @@ func GetPasswordToken(application *Application, username string, password string
 		Code:         util.GenerateClientId(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		IdToken:      idToken,
 		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:        scope,
 		TokenType:    "Bearer",
@@ -370,7 +375,7 @@ func GetClientCredentialsToken(application *Application, clientSecret string, sc
 		Type:  "application",
 	}
 
-	accessToken, _, tokenName, err := generateJwtToken(application, nullUser, "", "", "", scope, "", host)
+	accessToken, _, _, tokenName, err := generateJwtToken(application, nullUser, "", "", "", scope, "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -431,7 +436,24 @@ func GetImplicitToken(application *Application, username string, password string
 		}, nil
 	}
 
-	return mintImplicitToken(application, username, scope, nonce, host)
+	if tokenError := getMfaUserTokenError(user); tokenError != nil {
+		return nil, tokenError, nil
+	}
+
+	return mintTokenForUser(application, user, scope, nonce, host)
+}
+
+// getMfaUserTokenError refuses a password-only grant for an MFA-enabled user, the same as
+// the password in the URL of AutoSigninFilter, or the password alone would skip the second factor
+func getMfaUserTokenError(user *User) *TokenError {
+	if !user.IsMfaEnabled() {
+		return nil
+	}
+
+	return &TokenError{
+		Error:            InvalidGrant,
+		ErrorDescription: "the user has MFA enabled and cannot sign in with a password grant, please use the authorization code flow",
+	}
 }
 
 // GetJwtBearerToken handles the JWT Bearer Grant flow (RFC 7523).
@@ -462,7 +484,7 @@ func GetTokenByUser(application *Application, user *User, scope string, nonce st
 		return nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", nonce, scope, "", host)
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, user, "", "", nonce, scope, "", host)
 	if err != nil {
 		return nil, err
 	}
@@ -477,6 +499,7 @@ func GetTokenByUser(application *Application, user *User, scope string, nonce st
 		Code:         util.GenerateClientId(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		IdToken:      idToken,
 		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:        scope,
 		TokenType:    "Bearer",
@@ -576,7 +599,7 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 		return nil, nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", "", "", host)
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, user, "", "", "", "", "", host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -594,6 +617,7 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 		Code:         session.SessionKey, // a trick, because miniprogram does not use the code, so use the code field to save the session_key
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		IdToken:      idToken,
 		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:        "",
 		TokenType:    "Bearer",
@@ -659,7 +683,12 @@ func GetTokenExchangeToken(application *Application, clientSecret string, subjec
 
 	// A valid signature is not enough: the subject token must still be active, the same
 	// way the refresh_token grant checks it, or a revoked token can be exchanged forever.
-	subjectTokenRecord, err := GetTokenByAccessToken(subjectToken)
+	var subjectTokenRecord *Token
+	if subjectTokenType == "urn:ietf:params:oauth:token-type:id_token" {
+		subjectTokenRecord, err = GetTokenByIdToken(subjectToken)
+	} else {
+		subjectTokenRecord, err = GetTokenByAccessToken(subjectToken)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -758,7 +787,7 @@ func GetTokenExchangeToken(application *Application, clientSecret string, subjec
 		return nil, nil, err
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, targetAudience, host)
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, targetAudience, host)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -776,6 +805,7 @@ func GetTokenExchangeToken(application *Application, clientSecret string, subjec
 		Code:         util.GenerateClientId(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+		IdToken:      idToken,
 		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:        scope,
 		TokenType:    "Bearer",

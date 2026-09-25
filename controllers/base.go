@@ -68,6 +68,17 @@ func (c *ApiController) IsAdminOf(user2 *object.User) bool {
 	return user != nil && user2 != nil && user.IsAdmin && user.Owner == user2.Owner
 }
 
+// IsAdminOfOrganization checks that the current user administers the organization: a
+// global admin does, an org admin only their own organization.
+func (c *ApiController) IsAdminOfOrganization(organization string) bool {
+	isGlobalAdmin, user := c.isGlobalAdmin()
+	if isGlobalAdmin {
+		return true
+	}
+
+	return user != nil && user.IsAdmin && user.Owner == organization
+}
+
 func (c *ApiController) IsAdminOrSelf(user2 *object.User) bool {
 	isGlobalAdmin, user := c.isGlobalAdmin()
 	if isGlobalAdmin {
@@ -95,6 +106,14 @@ func (c *ApiController) requireOrganizationPermission(organization string) bool 
 		return false
 	}
 
+	return true
+}
+
+func (c *ApiController) requireGlobalAdmin() bool {
+	if !c.IsGlobalAdmin() {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return false
+	}
 	return true
 }
 
@@ -240,6 +259,13 @@ func (c *ApiController) GetSessionOidc() (string, string) {
 // SetSessionUsername ...
 func (c *ApiController) SetSessionUsername(user string) {
 	c.SetSession("username", user)
+	c.clearSessionOidc()
+}
+
+// clearSessionOidc drops the access token scope left by AutoSigninFilter, which would otherwise limit an interactive sign-in
+func (c *ApiController) clearSessionOidc() {
+	c.DelSession("scope")
+	c.DelSession("aud")
 }
 
 func (c *ApiController) SetSessionToken(accessToken string) {

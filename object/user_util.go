@@ -88,6 +88,13 @@ func HasUserByPhoneAndCountryCode(organizationName string, phone string, country
 	return user != nil
 }
 
+func GetUserByName(organization string, name string) (*User, error) {
+	if conf.GetConfigBool("isUsernameLowered") {
+		name = strings.ToLower(name)
+	}
+	return GetUserByField(organization, "name", strings.TrimSpace(name))
+}
+
 func GetUserByFields(organization string, field string) (*User, error) {
 	isUsernameLowered := conf.GetConfigBool("isUsernameLowered")
 	if isUsernameLowered {
@@ -540,6 +547,18 @@ func userVisible(isAdmin bool, item *AccountItem) bool {
 	return true
 }
 
+// adminOnlyAccountItems grant access or lift a restriction, an organization whose account items
+// leave one of them out must not hand it to its users
+var adminOnlyAccountItems = []string{"User type", "Tag", "Properties", "Groups", "Need update password", "IP whitelist"}
+
+func getAccountItemForUpdate(name string, organization *Organization) *AccountItem {
+	item := GetAccountItemByName(name, organization)
+	if item == nil && util.InSlice(adminOnlyAccountItems, name) {
+		return &AccountItem{Name: name, ViewRule: "Admin", ModifyRule: "Admin"}
+	}
+	return item
+}
+
 func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDisplayNameEmpty bool, lang string) (bool, string) {
 	organization, err := GetOrganizationByUser(oldUser)
 	if err != nil {
@@ -593,7 +612,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.Type != newUser.Type {
-		item := GetAccountItemByName("User type", organization)
+		item := getAccountItemForUpdate("User type", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Type = oldUser.Type
 		} else {
@@ -682,7 +701,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.Tag != newUser.Tag {
-		item := GetAccountItemByName("Tag", organization)
+		item := getAccountItemForUpdate("Tag", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Tag = oldUser.Tag
 		} else {
@@ -836,7 +855,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 	}
 	newUserPropertiesJson, _ := json.Marshal(newUser.Properties)
 	if string(oldUserPropertiesJson) != string(newUserPropertiesJson) {
-		item := GetAccountItemByName("Properties", organization)
+		item := getAccountItemForUpdate("Properties", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Properties = oldUser.Properties
 		} else {
@@ -863,7 +882,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 	}
 	newUserGroupsJson, _ := json.Marshal(newUser.Groups)
 	if string(oldUserGroupsJson) != string(newUserGroupsJson) {
-		item := GetAccountItemByName("Groups", organization)
+		item := getAccountItemForUpdate("Groups", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Groups = oldUser.Groups
 		} else {
@@ -924,7 +943,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.NeedUpdatePassword != newUser.NeedUpdatePassword {
-		item := GetAccountItemByName("Need update password", organization)
+		item := getAccountItemForUpdate("Need update password", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.NeedUpdatePassword = oldUser.NeedUpdatePassword
 		} else {
@@ -932,7 +951,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.IpWhitelist != newUser.IpWhitelist {
-		item := GetAccountItemByName("IP whitelist", organization)
+		item := getAccountItemForUpdate("IP whitelist", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.IpWhitelist = oldUser.IpWhitelist
 		} else {
@@ -1039,15 +1058,16 @@ func ParseAppUserId(userId string) (org, appName string) {
 
 // GetAppUser returns the virtual administrator represented by an application
 // credential. The application's persisted organization is authoritative; an
-// organization embedded in the new typed ID must match it.
+// organization embedded in the new typed ID must match it. Dynamically registered
+// clients never act as administrators.
 func GetAppUser(userId string) (*User, error) {
-	if !IsAppUser(userId) {
+	if !strings.HasPrefix(userId, "app/") {
 		return nil, nil
 	}
 
 	organization, appName := ParseAppUserId(userId)
 	application, err := getApplication("admin", appName)
-	if err != nil || application == nil {
+	if err != nil || application == nil || application.IsDynamicClient() {
 		return nil, err
 	}
 
@@ -1059,8 +1079,19 @@ func GetAppUser(userId string) (*User, error) {
 	return &User{Owner: application.Organization, Name: userId, IsAdmin: true}, nil
 }
 
-// GetUserOrAppUser returns either a persisted user or the virtual user for an
-// application credential.
+func (application *Application) IsDynamicClient() bool {
+	return util.InSlice(application.Tags, "dcr")
+}
+
+func GetAppUserId(application *Application) string {
+	if application.IsDynamicClient() {
+		return fmt.Sprintf("app-dcr/%s", application.Name)
+	}
+	return fmt.Sprintf("app/%s/%s", application.Organization, application.Name)
+}
+
+// GetUserOrAppUser returns the real user for userId, or the virtual user of an
+// application credential, see GetAppUser().
 func GetUserOrAppUser(userId string) (*User, error) {
 	if IsAppUser(userId) {
 		return GetAppUser(userId)

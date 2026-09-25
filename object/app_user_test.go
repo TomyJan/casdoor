@@ -37,6 +37,33 @@ func TestParseAppUserId(t *testing.T) {
 	}
 }
 
+func TestGetAppUserId(t *testing.T) {
+	tests := []struct {
+		name        string
+		application *Application
+		want        string
+	}{
+		{
+			name:        "organization-scoped application",
+			application: &Application{Organization: "acme", Name: "portal"},
+			want:        "app/acme/portal",
+		},
+		{
+			name:        "dynamic client",
+			application: &Application{Name: "generated", Tags: []string{"dcr"}},
+			want:        "app-dcr/generated",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetAppUserId(tt.application); got != tt.want {
+				t.Fatalf("GetAppUserId() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNormalUserIsNotGlobalAdmin(t *testing.T) {
 	isGlobalAdmin, err := isUserIdGlobalAdmin("acme/alice")
 	if err != nil {

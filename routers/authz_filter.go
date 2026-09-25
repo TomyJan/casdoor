@@ -55,6 +55,19 @@ var organizationParamObject = []string{
 	"/api/get-webhook-events",
 }
 
+var ownerParamObject = []string{
+	"/api/get-dashboard",
+	"/api/get-dashboard-providers",
+	"/api/get-dashboard-mfa",
+	"/api/get-dashboard-heatmap",
+	"/api/get-user-count",
+}
+
+var sessionPkIdObject = []string{
+	"/api/get-session",
+	"/api/is-session-duplicated",
+}
+
 // sessionObject lists the APIs whose controllers ignore the request parameters and
 // act on the signed-in user's organization (false) or on the user themselves (true),
 // which makes that the object to authorize against.
@@ -79,6 +92,15 @@ func getSessionObject(ctx *context.Context, withName bool) (string, string, erro
 		name = ""
 	}
 	return owner, name, nil
+}
+
+func getSessionPkIdObject(ctx *context.Context) (string, string, error) {
+	sessionPkId := ctx.Input.Query("sessionPkId")
+	tokens := strings.Split(sessionPkId, "/")
+	if len(tokens) != 3 || tokens[0] == "" || tokens[1] == "" {
+		return "", "", fmt.Errorf("invalid sessionPkId: %s", sessionPkId)
+	}
+	return tokens[0], tokens[1], nil
 }
 
 type Object struct {
@@ -179,6 +201,14 @@ func getObject(ctx *context.Context) (string, string, error) {
 	}
 
 	if method == http.MethodGet {
+		if util.InSlice(sessionPkIdObject, path) {
+			return getSessionPkIdObject(ctx)
+		}
+
+		if util.InSlice(ownerParamObject, path) {
+			return ctx.Input.Query("owner"), "", nil
+		}
+
 		if ctx.Request.URL.Path == "/api/get-policies" {
 			// GetPolicies() works on the adapter as soon as "adapterId" is given and
 			// falls back to the enforcer of "id", so authorize the same way.
@@ -351,11 +381,25 @@ func getObjects(ctx *context.Context) ([]Object, error) {
 	}
 
 	bodyOwner, bodyName := getObjectFromBody(ctx, path)
-	if bodyOwner != "" && (bodyOwner != owner || bodyName != name) {
-		objects = append(objects, Object{Owner: bodyOwner, Name: bodyName})
-	}
+	objects = appendObject(objects, bodyOwner, bodyName)
+
+	formOwner, formName := ownerNameFromForm(ctx)
+	objects = appendObject(objects, formOwner, formName)
 
 	return objects, nil
+}
+
+func appendObject(objects []Object, owner string, name string) []Object {
+	if owner == "" {
+		return objects
+	}
+
+	for _, obj := range objects {
+		if obj.Owner == owner && obj.Name == name {
+			return objects
+		}
+	}
+	return append(objects, Object{Owner: owner, Name: name})
 }
 
 func willLog(subOwner string, subName string, method string, urlPath string, objOwner string, objName string) bool {

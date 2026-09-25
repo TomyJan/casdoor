@@ -135,12 +135,6 @@ export default function AuthCallback() {
     // Providers disagree on the parameter name for the authorization code.
     let code =
       params.get("code") ?? params.get("auth_code") ?? params.get("authCode") ?? null;
-    if (code === null) {
-      const web3Key = params.get("web3AuthTokenKey");
-      if (web3Key) {
-        code = localStorage.getItem(web3Key);
-      }
-    }
     const isSteam = params.get("openid.mode");
     if (isSteam !== null && code === null) {
       code = location.search;
@@ -217,14 +211,14 @@ export default function AuthCallback() {
         if (responseMode === "form_post") {
           Setting.createFormAndSubmit(oAuthParams?.redirectUri, {
             token: responseTypes.includes("token") ? res.data : null,
-            id_token: responseTypes.includes("id_token") ? res.data : null,
+            id_token: responseTypes.includes("id_token") ? res.data3 : null,
             token_type: "bearer",
             state: oAuthParams?.state,
           });
         } else {
           Setting.goToLink(
             `${oAuthParams.redirectUri}${concatChar}${type}=${encodeURIComponent(
-              res.data,
+              type === "id_token" ? res.data3 : res.data,
             )}&state=${encodeURIComponent(oAuthParams.state)}&token_type=bearer`,
           );
         }

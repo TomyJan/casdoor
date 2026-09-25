@@ -60,7 +60,7 @@ type Code struct {
 
 type TokenWrapper struct {
 	AccessToken  string `json:"access_token"`
-	IdToken      string `json:"id_token"`
+	IdToken      string `json:"id_token,omitempty"`
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
@@ -173,6 +173,16 @@ func IsGrantTypeValid(method string, grantTypes []string) bool {
 		}
 	}
 	return false
+}
+
+func isScopeSubset(scope string, grantedScope string) bool {
+	granted := strings.Fields(grantedScope)
+	for _, s := range strings.Fields(scope) {
+		if !util.InSlice(granted, s) {
+			return false
+		}
+	}
+	return true
 }
 
 // isRegexScope returns true if the scope string contains regex metacharacters.
@@ -340,7 +350,7 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 	if err != nil {
 		return nil, err
 	}
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, provider, signinMethod, nonce, scope, resource, host)
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, user, provider, signinMethod, nonce, scope, resource, host)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +369,7 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 		Code:          util.GenerateClientId(),
 		AccessToken:   accessToken,
 		RefreshToken:  refreshToken,
+		IdToken:       idToken,
 		ExpiresIn:     int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:         scope,
 		TokenType:     "Bearer",
@@ -481,15 +492,20 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 
 	if scope == "" {
 		scope = oldTokenScope
+	} else if !isScopeSubset(scope, oldTokenScope) {
+		return &TokenError{
+			Error:            InvalidScope,
+			ErrorDescription: "the requested scope exceeds the scope of the original grant",
+		}, nil
 	}
 
 	// generate a new token
-	user, err := getUser(application.Organization, token.User)
+	user, err := getUser(token.Organization, token.User)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil {
-		return "", fmt.Errorf("The user: %s doesn't exist", util.GetId(application.Organization, token.User))
+		return "", fmt.Errorf("The user: %s doesn't exist", util.GetId(token.Organization, token.User))
 	}
 
 	if user.IsForbidden {
@@ -504,7 +520,7 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		return nil, err
 	}
 
-	newAccessToken, newRefreshToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, resource, host)
+	newAccessToken, newRefreshToken, newIdToken, tokenName, err := generateJwtToken(application, user, "", "", "", scope, resource, host)
 	if err != nil {
 		return &TokenError{
 			Error:            EndpointError,
@@ -522,6 +538,7 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		Code:         util.GenerateClientId(),
 		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken,
+		IdToken:      newIdToken,
 		ExpiresIn:    int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:        scope,
 		TokenType:    "Bearer",
@@ -558,7 +575,7 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 
 	tokenWrapper := &TokenWrapper{
 		AccessToken:  newToken.AccessToken,
-		IdToken:      newToken.AccessToken,
+		IdToken:      newToken.IdToken,
 		RefreshToken: newToken.RefreshToken,
 		TokenType:    newToken.TokenType,
 		ExpiresIn:    newToken.ExpiresIn,
@@ -627,6 +644,24 @@ func ValidateClientAssertion(clientAssertion string, host string) (bool, *Applic
 // mintImplicitToken mints a token for an already-authenticated user.
 // Callers must verify user identity before calling this function.
 func mintImplicitToken(application *Application, username string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+	user, err := GetUserByFieldsForSharedApp(application, application.Organization, username)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mintTokenForUser(application, user, scope, nonce, host)
+}
+
+// GetDeviceCodeToken takes the full user ID recorded by the browser approval: looking a bare name
+// up again in the application's organization may resolve to another organization's namesake.
+func GetDeviceCodeToken(application *Application, userId string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+	user, err := GetUser(userId)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mintTokenForUser(application, user, scope, nonce, host)
+}
+
+func mintTokenForUser(application *Application, user *User, scope string, nonce string, host string) (*Token, *TokenError, error) {
 	expandedScope, ok := IsScopeValidAndExpand(scope, application)
 	if !ok {
 		return nil, &TokenError{
@@ -636,10 +671,6 @@ func mintImplicitToken(application *Application, username string, scope string, 
 	}
 	scope = expandedScope
 
-	user, err := GetUserByFieldsForSharedApp(application, application.Organization, username)
-	if err != nil {
-		return nil, nil, err
-	}
 	if user == nil {
 		return nil, &TokenError{
 			Error:            InvalidGrant,
@@ -806,7 +837,7 @@ func createGuestUserToken(application *Application, clientSecret string, verifie
 		}, nil
 	}
 
-	accessToken, refreshToken, tokenName, err := generateJwtToken(application, guestUser, "", "", "", "", "", "")
+	accessToken, refreshToken, idToken, tokenName, err := generateJwtToken(application, guestUser, "", "", "", "", "", "")
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,
@@ -824,6 +855,7 @@ func createGuestUserToken(application *Application, clientSecret string, verifie
 		Code:          util.GenerateClientId(),
 		AccessToken:   accessToken,
 		RefreshToken:  refreshToken,
+		IdToken:       idToken,
 		ExpiresIn:     int(application.ExpireInHours * float64(hourSeconds)),
 		Scope:         "",
 		TokenType:     "Bearer",

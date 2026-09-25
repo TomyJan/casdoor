@@ -238,6 +238,9 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 		}
 	}
 
+	objOwner, objName = dropAnonymousSelfObject(subOwner, subName, objOwner, objName)
+	objName = dropNonUserSelfObject(subOwner, subName, urlPath, objOwner, objName)
+
 	res, err := Enforcer.Enforce(subOwner, subName, method, urlPath, objOwner, objName)
 	if err != nil {
 		return false, err
@@ -251,6 +254,45 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 	}
 
 	return res, nil
+}
+
+func dropAnonymousSelfObject(subOwner string, subName string, objOwner string, objName string) (string, string) {
+	if subOwner == "anonymous" && subName == "anonymous" && objOwner == "anonymous" && objName == "anonymous" {
+		return "", ""
+	}
+	return objOwner, objName
+}
+
+// userObjectApis lists the APIs whose object is a user (or a row keyed by the user), the
+// only ones the self-match of the API model may authorize. Any other API only reads the
+// owner and name of the request to authorize it, so a client could put its own ones there
+// and have the request run on another object, e.g. an MCP tool call or a sent email.
+var userObjectApis = []string{
+	"/api/get-user",
+	"/api/update-user",
+	"/api/delete-user",
+	"/api/check-user-password",
+	"/api/remove-user-from-group",
+	"/api/verify-identification",
+	"/api/mfa/setup/initiate",
+	"/api/mfa/setup/verify",
+	"/api/mfa/setup/enable",
+	"/api/delete-mfa",
+	"/api/set-preferred-mfa",
+	"/api/get-session",
+	"/api/is-session-duplicated",
+	"/api/add-session",
+	"/api/update-session",
+	"/api/delete-session",
+	"/api/get-permissions-by-submitter",
+	"/api/delete-resource",
+}
+
+func dropNonUserSelfObject(subOwner string, subName string, urlPath string, objOwner string, objName string) string {
+	if subOwner == objOwner && subName == objName && !util.InSlice(userObjectApis, urlPath) {
+		return ""
+	}
+	return objName
 }
 
 func isAllowedInDemoMode(subOwner string, subName string, method string, urlPath string, objOwner string, objName string) bool {

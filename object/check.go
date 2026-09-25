@@ -603,6 +603,18 @@ func CheckApiPermission(userId string, organization string, path string, method 
 	return false, nil
 }
 
+func IsUserOfApplication(user *User, application *Application) (bool, error) {
+	if user.IsGlobalAdmin() || user.Owner == application.Organization || application.IsShared {
+		return true, nil
+	}
+
+	organization, err := getOrganization("admin", user.Owner)
+	if err != nil {
+		return false, err
+	}
+	return organization != nil && organization.DefaultApplication == application.Name, nil
+}
+
 func CheckLoginPermission(userId string, application *Application) (bool, error) {
 	owner, _, err := util.GetOwnerAndNameFromIdWithError(userId)
 	if err != nil {
@@ -832,7 +844,21 @@ func CheckUpdateUser(oldUser, user *User, lang string) string {
 			return err.Error()
 		}
 	}
+	if msg := checkUserGroups(oldUser, user, lang); msg != "" {
+		return msg
+	}
 
+	return ""
+}
+
+// checkUserGroups keeps a user out of the groups of other organizations: a group grants the
+// roles and permissions of the organization owning it
+func checkUserGroups(oldUser, user *User, lang string) string {
+	for _, group := range user.Groups {
+		if !util.InSlice(oldUser.Groups, group) && !strings.HasPrefix(group, user.Owner+"/") {
+			return i18n.Translate(lang, "auth:Unauthorized operation")
+		}
+	}
 	return ""
 }
 
