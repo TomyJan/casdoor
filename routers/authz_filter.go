@@ -392,6 +392,10 @@ func getUrlPath(ctx *context.Context) string {
 		return "/api/saml/redirect"
 	}
 
+	if strings.HasPrefix(urlPath, "/api/saml/logout") {
+		return "/api/saml/logout"
+	}
+
 	return urlPath
 }
 
