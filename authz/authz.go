@@ -106,7 +106,7 @@ var defaultApiRules = [][]string{
 	{"*", "*", "POST", "/api/acs", "*", "*"},
 	{"*", "*", "GET", "/api/saml/metadata", "*", "*"},
 	{"*", "*", "*", "/api/saml/redirect", "*", "*"},
-  {"*", "*", "*", "/api/saml/logout", "*", "*"},
+	{"*", "*", "*", "/api/saml/logout", "*", "*"},
 	{"*", "*", "*", "/cas", "*", "*"},
 	{"*", "*", "*", "/scim", "*", "*"},
 	{"*", "*", "*", "/api/webauthn", "*", "*"},
