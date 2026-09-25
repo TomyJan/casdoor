@@ -1,0 +1,74 @@
+name: Tag Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version component to increment
+        type: choice
+        required: true
+        default: patch
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-release-master
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.repository == 'TomyJan/casdoor' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        run: |
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "UPSTREAM_SYNC_TOKEN is required to trigger the release workflow from a tag push." >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+
+      - name: Create and push version tag
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin --tags --force
+
+          latest=v0.0.0
+          while IFS= read -r candidate; do
+            if [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              latest=$candidate
+              break
+            fi
+          done < <(git tag --list --sort=-version:refname)
+
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "Invalid version component: $BUMP" >&2; exit 1 ;;
+          esac
+
+          next="v${major}.${minor}.${patch}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "Release $next"
+          git push origin "refs/tags/$next"
+          echo "Created $next from $latest at $(git rev-parse HEAD)"

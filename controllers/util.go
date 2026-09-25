@@ -109,7 +109,6 @@ func (c *ApiController) RequireSignedInUser() (*object.User, bool) {
 	if object.IsAppUser(userId) {
 		tmpUserId := c.Ctx.Input.Query("userId")
 		if tmpUserId != "" {
-			// an application may only act as a user of its own organization
 			appUser, err := object.GetAppUser(userId)
 			if err != nil {
 				c.ResponseError(err.Error())
