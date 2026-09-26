@@ -107,60 +107,25 @@ func (c *ApiController) checkCredentialApplication(user *object.User, applicatio
 	return true
 }
 
+func (c *ApiController) checkApplicationSignin(application *object.Application, user *object.User) bool {
+	err := object.CheckApplicationSignin(application, user, util.GetClientIpFromRequest(c.Ctx.Request), c.GetAcceptLanguage())
+	if err != nil {
+		c.ResponseError(err.Error())
+		return false
+	}
+	return true
+}
+
 // HandleLoggedIn ...
 func (c *ApiController) HandleLoggedIn(application *object.Application, user *object.User, form *form.AuthForm) (resp *Response) {
-	if user.IsForbidden {
-		c.ResponseError(c.T("check:The user is forbidden to sign in, please contact the administrator"))
-		return
-	}
-
-	if user.IsDeleted {
-		c.ResponseError(c.T("check:The user has been deleted and cannot be used to sign in, please contact the administrator"))
+	if !c.checkApplicationSignin(application, user) || !c.checkCredentialApplication(user, application, form) {
 		return
 	}
 
 	userId := user.GetId()
-
+	c.renewSessionIdForUser(userId)
 	clientIp := util.GetClientIpFromRequest(c.Ctx.Request)
-	err := object.CheckEntryIp(clientIp, user, application, application.OrganizationObj, c.GetAcceptLanguage())
-	if err != nil {
-		c.ResponseError(err.Error())
-		return
-	}
-
-	if application.DisableSignin {
-		c.ResponseError(fmt.Sprintf(c.T("auth:The application: %s has disabled users to signin"), application.Name))
-		return
-	}
-
-	if application.OrganizationObj != nil && application.OrganizationObj.DisableSignin {
-		c.ResponseError(fmt.Sprintf(c.T("auth:The organization: %s has disabled users to signin"), application.Organization))
-		return
-	}
-
-	allowed, err := object.CheckLoginPermission(userId, application)
-	if err != nil {
-		c.ResponseError(err.Error(), nil)
-		return
-	}
-	if !allowed {
-		c.ResponseError(c.T("auth:Unauthorized operation"))
-		return
-	}
-
-	if !c.checkCredentialApplication(user, application, form) {
-		return
-	}
-
-	// check user's tag
-	if !user.IsGlobalAdmin() && !user.IsAdmin && len(application.Tags) > 0 {
-		// only users with the tag that is listed in the application tags can login
-		// supports comma-separated tags in user.Tag (e.g., "default-policy,project-admin")
-		if !util.HasTagInSlice(application.Tags, user.Tag) {
-			c.ResponseError(fmt.Sprintf(c.T("auth:User's tag: %s is not listed in the application's tags"), user.Tag))
-			return
-		}
-	}
+	var err error
 
 	// check whether paid-user have active subscription, admins are never locked out by it
 	if user.Type == "paid-user" && !user.IsGlobalAdmin() && !user.IsAdmin {
@@ -262,8 +227,11 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 			resp = codeToResponse(code)
 		}
 	} else if form.Type == ResponseTypeToken || form.Type == ResponseTypeIdToken { // implicit flow
+		redirectUri := c.Ctx.Input.Query("redirectUri")
 		if !object.IsGrantTypeValid(form.Type, application.GrantTypes) {
 			resp = &Response{Status: "error", Msg: fmt.Sprintf("error: grant_type: %s is not supported in this application", form.Type), Data: ""}
+		} else if redirectUri != "" && !application.IsRedirectUriValid(redirectUri) {
+			resp = &Response{Status: "error", Msg: fmt.Sprintf(c.T("token:Redirect URI: %s doesn't exist in the allowed Redirect URI list"), redirectUri), Data: ""}
 		} else {
 			scope := c.Ctx.Input.Query("scope")
 			nonce := c.Ctx.Input.Query("nonce")
@@ -337,7 +305,12 @@ func (c *ApiController) HandleLoggedIn(application *object.Application, user *ob
 		service := c.Ctx.Input.Query("service")
 		resp = wrapErrorResponse(nil)
 		if service != "" {
-			st, err := object.GenerateCasToken(userId, service)
+			if err = object.CheckCasLogin(application, c.GetAcceptLanguage(), service); err != nil {
+				c.ResponseError(err.Error())
+				return
+			}
+
+			st, err := object.GenerateCasToken(userId, service, application.GetId())
 			if err != nil {
 				resp = wrapErrorResponse(err)
 			} else {
@@ -543,18 +516,27 @@ func isProxyProviderType(providerType string) bool {
 	return false
 }
 
+func (c *ApiController) setMfaRememberCookie(user *object.User, maxAge int) error {
+	token, err := object.GetMfaRememberToken(user, user.MfaRememberDeadline)
+	if err != nil {
+		return err
+	}
+
+	c.Ctx.SetCookie(object.MfaRememberCookieName, token, maxAge, "/", "", c.Ctx.Input.Scheme() == "https", true, "Lax")
+	return nil
+}
+
 func checkMfaEnable(c *ApiController, user *object.User, organization *object.Organization, verificationType string) bool {
 	if object.IsNeedPromptMfa(organization, user) {
 		// The prompt page needs the user to be signed in
+		c.renewSessionIdForUser(user.GetId())
 		c.SetSessionUsername(user.GetId())
 		c.ResponseOk(object.RequiredMfa)
 		return true
 	}
 
 	if user.IsMfaEnabled() {
-		currentTime := util.String2Time(util.GetCurrentTime())
-		mfaRememberDeadline := util.String2Time(user.MfaRememberDeadline)
-		if user.MfaRememberDeadline != "" && mfaRememberDeadline.After(currentTime) {
+		if object.IsMfaRemembered(user, c.Ctx.GetCookie(object.MfaRememberCookieName)) {
 			return false
 		}
 		c.setMfaUserSession(user.GetId())
@@ -639,6 +621,25 @@ func getUserByProvider(organization string, provider *object.Provider, providerI
 	return object.GetUserByField(organization, provider.Type, providerId)
 }
 
+func checkUserFace(user *object.User, authForm *form.AuthForm, faceIdProvider *object.Provider, lang string) error {
+	if faceIdProvider == nil {
+		return object.CheckFaceId(user, authForm.FaceId, lang)
+	}
+
+	if !user.HasFaceIdImage() {
+		return errors.New(i18n.Translate(lang, "check:Face data does not exist, cannot log in"))
+	}
+
+	ok, err := user.CheckUserFace(authForm.FaceIdImage, faceIdProvider)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New(i18n.Translate(lang, "check:Face data mismatch"))
+	}
+	return nil
+}
+
 func linkUserByProvider(user *object.User, provider *object.Provider, providerId string) (bool, error) {
 	if object.IsFlexibleCustomProvider(provider.Type) {
 		return object.LinkFlexibleCustomAccount(user, provider.Name, providerId)
@@ -717,27 +718,10 @@ func (c *ApiController) Login() {
 				return
 			}
 
-			if faceIdProvider == nil {
-				if err := object.CheckFaceId(user, authForm.FaceId, c.GetAcceptLanguage()); err != nil {
-					c.ResponseError(err.Error(), nil)
-					return
-				}
-			} else {
-				if !user.HasFaceIdImage() {
-					c.ResponseError(i18n.Translate(c.GetAcceptLanguage(), "check:Face data does not exist, cannot log in"))
-					return
-				}
-
-				ok, err := user.CheckUserFace(authForm.FaceIdImage, faceIdProvider)
-				if err != nil {
-					c.ResponseError(err.Error(), nil)
-					return
-				}
-
-				if !ok {
-					c.ResponseError(i18n.Translate(c.GetAcceptLanguage(), "check:Face data mismatch"))
-					return
-				}
+			err = object.CheckFaceIdWithLimit(user, func() error { return checkUserFace(user, &authForm, faceIdProvider, c.GetAcceptLanguage()) }, c.GetAcceptLanguage())
+			if err != nil {
+				c.ResponseError(err.Error(), nil)
+				return
 			}
 		} else if authForm.Password == "" {
 			var application *object.Application
@@ -1408,6 +1392,11 @@ func (c *ApiController) Login() {
 					c.ResponseError(err.Error())
 					return
 				}
+				err = c.setMfaRememberCookie(user, mfaRememberInSeconds)
+				if err != nil {
+					c.ResponseError(err.Error())
+					return
+				}
 			}
 			c.SetSession("verificationCodeType", "")
 		} else if authForm.RecoveryCode != "" {
@@ -1588,7 +1577,7 @@ func (c *ApiController) HandleOfficialAccountEvent() {
 		return
 	}
 
-	if !idp.VerifyWechatSignature(provider.Content, nonce, timestamp, signature) {
+	if provider.Type != "WeChat" || provider.Content == "" || !idp.VerifyWechatSignature(provider.Content, nonce, timestamp, signature) {
 		c.ResponseError("invalid signature")
 		return
 	}

@@ -160,7 +160,7 @@ func (c *ApiController) GetIdpDiscovery() {
 
 	issuer := c.Ctx.Input.Query("issuer")
 
-	discovery, err := idp.GetOidcDiscovery(issuer)
+	discovery, err := idp.GetOidcDiscoveryByAdmin(issuer, c.IsGlobalAdmin())
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -181,6 +181,10 @@ func (c *ApiController) requireProviderPermission(provider *object.Provider) boo
 	}
 
 	return true
+}
+
+func isProviderVisibleToUser(provider *object.Provider, user *object.User) bool {
+	return provider.Owner == "admin" || provider.Owner == user.Owner
 }
 
 func (c *ApiController) getMaskedProviders(providers []*object.Provider, isMaskEnabled bool) []*object.Provider {

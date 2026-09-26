@@ -630,8 +630,11 @@ func (application *Application) IsMagicLinkSignupEnabled() bool {
 }
 
 func (application *Application) IsSignupAllowedFor(organization string) bool {
+	if organization == "built-in" {
+		return false
+	}
 	if application.IsShared {
-		return organization != "built-in"
+		return true
 	}
 	return organization == application.Organization
 }
@@ -688,7 +691,7 @@ func IsOriginAllowed(origin string) (bool, error) {
 	}
 
 	for _, application := range applications {
-		if application.IsOriginValid(origin) {
+		if !application.IsDynamicClient() && application.IsOriginValid(origin) {
 			return true, nil
 		}
 	}
