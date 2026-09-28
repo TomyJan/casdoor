@@ -160,7 +160,7 @@ func (c *ApiController) GetIdpDiscovery() {
 
 	issuer := c.Ctx.Input.Query("issuer")
 
-	discovery, err := idp.GetOidcDiscovery(issuer)
+	discovery, err := idp.GetOidcDiscoveryByAdmin(issuer, c.IsGlobalAdmin())
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -181,6 +181,24 @@ func (c *ApiController) requireProviderPermission(provider *object.Provider) boo
 	}
 
 	return true
+}
+
+func (c *ApiController) requireProviderSavePermission(provider *object.Provider) bool {
+	if !c.requireProviderPermission(provider) {
+		return false
+	}
+
+	isServerLocalLog := provider.Category == "Log" && (provider.Type == "System Log" || provider.Type == "SELinux Log" || provider.Type == "Agent")
+	if isServerLocalLog && !c.IsGlobalAdmin() {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return false
+	}
+
+	return true
+}
+
+func isProviderVisibleToUser(provider *object.Provider, user *object.User) bool {
+	return provider.Owner == "admin" || provider.Owner == user.Owner
 }
 
 func (c *ApiController) getMaskedProviders(providers []*object.Provider, isMaskEnabled bool) []*object.Provider {
@@ -221,7 +239,7 @@ func (c *ApiController) UpdateProvider() {
 		return
 	}
 
-	ok := c.requireProviderPermission(&provider)
+	ok := c.requireProviderSavePermission(&provider)
 	if !ok {
 		return
 	}
@@ -257,7 +275,7 @@ func (c *ApiController) AddProvider() {
 		return
 	}
 
-	ok := c.requireProviderPermission(&provider)
+	ok := c.requireProviderSavePermission(&provider)
 	if !ok {
 		return
 	}

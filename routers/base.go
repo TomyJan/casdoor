@@ -68,8 +68,7 @@ func responseError(ctx *context.Context, error string, data ...interface{}) {
 }
 
 func getAcceptLanguage(ctx *context.Context) string {
-	language := ctx.Request.Header.Get("Accept-Language")
-	return conf.GetLanguage(language)
+	return conf.GetAcceptLanguage(ctx.Request.Header.Get("Accept-Language"))
 }
 
 func T(ctx *context.Context, error string) string {
@@ -189,6 +188,13 @@ func getUsernameByAccessKey(ctx *context.Context) (string, error) {
 	}
 
 	if key.User != "" {
+		isUserActive, err := key.IsUserActive()
+		if err != nil {
+			return "", err
+		}
+		if !isUserActive {
+			return "", fmt.Errorf("The user of access key: %s is forbidden or deleted", key.Name)
+		}
 		return util.GetId(key.Organization, key.User), nil
 	}
 

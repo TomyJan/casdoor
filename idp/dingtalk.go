@@ -208,6 +208,7 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		Email:         email,
 		EmailVerified: email != "",
 		Phone:         dtUserInfo.Mobile,
+		PhoneVerified: dtUserInfo.Mobile != "",
 		CountryCode:   countryCode,
 		AvatarUrl:     dtUserInfo.AvatarUrl,
 		Extra:         extra,

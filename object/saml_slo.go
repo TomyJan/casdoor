@@ -21,7 +21,6 @@ import (
 	"encoding/pem"
 	"encoding/xml"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -209,7 +208,7 @@ func SendSamlLogout(owner string, name string, sessionIds []string, host string)
 			continue
 		}
 
-		go postSamlLogoutRequest(application.SamlSingleLogoutUrl, logoutRequest)
+		go postLogoutForm(application, application.SamlSingleLogoutUrl, url.Values{"SAMLRequest": {logoutRequest}})
 	}
 }
 
@@ -237,17 +236,13 @@ func newSamlLogoutRequest(application *Application, samlSession *SamlSession, ho
 	return signSamlPostMessage(ctx, request)
 }
 
-func postSamlLogoutRequest(logoutUrl string, logoutRequest string) {
-	resp, err := http.PostForm(logoutUrl, url.Values{"SAMLRequest": {logoutRequest}})
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-}
-
 // GetSamlLogoutResponse builds the LogoutResponse for an SP-initiated LogoutRequest. Over the HTTP-POST
 // binding it returns the base64 message to post to the SP, over the HTTP-Redirect binding the URL to redirect to.
 func GetSamlLogoutResponse(application *Application, request *SamlLogoutRequest, relayState string, host string, usePost bool) (string, error) {
+	if isScriptUrl(application.SamlSingleLogoutUrl) {
+		return "", fmt.Errorf("the SAML single logout URL: %s of the application: %s is not allowed", application.SamlSingleLogoutUrl, application.GetId())
+	}
+
 	_, originBackend := getOriginFromHost(host)
 
 	response := &etree.Element{Space: "samlp", Tag: "LogoutResponse"}

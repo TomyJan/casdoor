@@ -184,7 +184,7 @@ func GetTokenByTokenValue(tokenValue, tokenTypeHint string) (*Token, error) {
 }
 
 func updateUsedByCode(token *Token) (bool, error) {
-	affected, err := ormer.Engine.Where("code=?", token.Code).Cols("code_is_used").Update(token)
+	affected, err := ormer.Engine.Where("code=?", token.Code).Cols("code_is_used", "grant_type").Update(token)
 	if err != nil {
 		return false, err
 	}
@@ -297,6 +297,19 @@ func ExpireTokensBySessionIds(owner string, username string, sessionIds []string
 	}
 
 	affected, err := ormer.Engine.In("session_id", ids).Where(fmt.Sprintf("organization = ? and %s = ? and expires_in > 0", quoteColumn("user")), owner, username).Cols("expires_in").Update(&Token{ExpiresIn: 0})
+	if err != nil {
+		return false, err
+	}
+
+	return affected != 0, nil
+}
+
+func ExpireTokensByApplicationAndSessionIds(owner string, username string, application string, sessionIds []string) (bool, error) {
+	if len(sessionIds) == 0 {
+		return false, nil
+	}
+
+	affected, err := ormer.Engine.In("session_id", sessionIds).Where(fmt.Sprintf("organization = ? and %s = ? and application = ? and expires_in > 0", quoteColumn("user")), owner, username, application).Cols("expires_in").Update(&Token{ExpiresIn: 0})
 	if err != nil {
 		return false, err
 	}

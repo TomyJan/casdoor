@@ -262,7 +262,7 @@ export default function AuthCallback() {
           props: res.data2,
           values: {...body, providerBack: body.provider, provider: ""},
           authParams,
-          onSuccess: onDone,
+          onSuccess: (mfaRes: any) => checkMfa(mfaRes, authParams, onDone),
         });
       } else if (res.data === "SelectPlan") {
         const pricing = res.data2;
@@ -284,7 +284,7 @@ export default function AuthCallback() {
       if (service !== "") {
         const newUrl = new URL(service);
         newUrl.searchParams.append("ticket", ok.data);
-        window.location.href = newUrl.toString();
+        Setting.goToLink(newUrl.toString());
       }
     };
 
@@ -315,6 +315,11 @@ export default function AuthCallback() {
           setMsg(res.msg);
         }
       });
+      return;
+    }
+
+    if (responseType === "link" && !Util.consumeLinkNonce(innerParams.get("linkNonce"))) {
+      setMsg(i18next.t("general:Unauthorized"));
       return;
     }
 

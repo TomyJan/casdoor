@@ -17,7 +17,6 @@ package object
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -111,7 +110,22 @@ func GetMaskedProvider(provider *Provider, isMaskEnabled bool) *Provider {
 
 	provider.HttpHeaders = getMaskedHttpHeaders(provider.HttpHeaders)
 
+	if isProviderContentSecret(provider) && provider.Content != "" {
+		provider.Content = "***"
+	}
+	if isProviderMetadataSecret(provider) && provider.Metadata != "" {
+		provider.Metadata = "***"
+	}
+
 	return provider
+}
+
+func isProviderContentSecret(provider *Provider) bool {
+	return provider.Type == "WeChat"
+}
+
+func isProviderMetadataSecret(provider *Provider) bool {
+	return provider.Type == "Google Chat"
 }
 
 func getMaskedHttpHeaders(headers map[string]string) map[string]string {
@@ -158,8 +172,15 @@ func GetMaskedProviders(providers []*Provider, isMaskEnabled bool) []*Provider {
 	return providers
 }
 
+func getProviderFilterField(field string) string {
+	if strings.EqualFold(field, "content") || strings.EqualFold(field, "metadata") {
+		return ""
+	}
+	return field
+}
+
 func GetProviderCount(owner, field, value string) (int64, error) {
-	session := GetSession("", -1, -1, field, value, "", "")
+	session := GetSession("", -1, -1, getProviderFilterField(field), value, "", "")
 	return session.Where("owner = ? or owner = ? ", "admin", owner).Count(&Provider{})
 }
 
@@ -200,7 +221,7 @@ func GetGlobalProviders() ([]*Provider, error) {
 
 func GetPaginationProviders(owner string, offset, limit int, field, value, sortField, sortOrder string) ([]*Provider, error) {
 	providers := []*Provider{}
-	session := GetSession("", offset, limit, field, value, sortField, sortOrder)
+	session := GetSession("", offset, limit, getProviderFilterField(field), value, sortField, sortOrder)
 	err := session.Where("owner = ? or owner = ? ", "admin", owner).Find(&providers)
 	if err != nil {
 		return providers, err
@@ -302,6 +323,12 @@ func UpdateProvider(id string, provider *Provider) (bool, error) {
 	}
 	if provider.ClientSecret2 == "***" {
 		session = session.Omit("client_secret2")
+	}
+	if provider.Content == "***" && isProviderContentSecret(provider) {
+		session = session.Omit("content")
+	}
+	if provider.Metadata == "***" && isProviderMetadataSecret(provider) {
+		session = session.Omit("metadata")
 	}
 
 	if provider.Type == "Tencent Cloud COS" {
@@ -801,7 +828,7 @@ func callProviderLogoutUrl(provider *Provider, accessToken string) {
 	params.Set("client_id", provider.ClientId)
 	params.Set("client_secret", provider.ClientSecret)
 
-	resp, err := http.PostForm(provider.CustomLogoutUrl, params)
+	resp, err := getProviderHttpClient(provider).PostForm(provider.CustomLogoutUrl, params)
 	if err != nil {
 		util.LogWarning(nil, "InvokeCustomProviderLogout: failed to call logout URL %s for provider %s: %v", provider.CustomLogoutUrl, provider.Name, err)
 		return

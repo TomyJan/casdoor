@@ -77,8 +77,14 @@ func TestDingTalkGetUserInfoCombinesStableIdentityAndCorpDetails(t *testing.T) {
 	if userInfo.Email != "corp@example.com" {
 		t.Errorf("Email = %q, want %q", userInfo.Email, "corp@example.com")
 	}
+	if !userInfo.EmailVerified {
+		t.Error("EmailVerified = false, want true")
+	}
 	if userInfo.Phone != "13100000000" {
 		t.Errorf("Phone = %q, want %q", userInfo.Phone, "13100000000")
+	}
+	if !userInfo.PhoneVerified {
+		t.Error("PhoneVerified = false, want true")
 	}
 	if userInfo.Extra["title"] != "Engineer" {
 		t.Errorf("Extra[title] = %q, want %q", userInfo.Extra["title"], "Engineer")

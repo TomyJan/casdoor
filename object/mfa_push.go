@@ -38,7 +38,7 @@ func (mfa *PushMfa) Initiate(userId string, issuer string) (*MfaProps, error) {
 	return &mfaProps, nil
 }
 
-func (mfa *PushMfa) SetupVerify(passCode string) error {
+func (mfa *PushMfa) SetupVerify(passCode string, lang string) error {
 	if mfa.Secret == "" {
 		return errors.New("push notification receiver is required")
 	}
@@ -78,7 +78,7 @@ func (mfa *PushMfa) Enable(user *User) error {
 	return nil
 }
 
-func (mfa *PushMfa) Verify(passCode string) error {
+func (mfa *PushMfa) Verify(passCode string, lang string) error {
 	if mfa.Secret == "" {
 		return errors.New("push notification receiver is required")
 	}
@@ -134,6 +134,8 @@ func (mfa *PushMfa) sendPushNotification(title string, message string) error {
 	if notifier == nil {
 		return errors.New("notification provider is not supported")
 	}
+	// the receiver is the user's own MFA secret, for a Custom HTTP provider the URL requested
+	restrictNotificationClient(notifier, util.NewInternetOnlyHttpClient(30*time.Second))
 
 	// Send the push notification
 	// Note: The challengeId is kept server-side and not exposed in the message

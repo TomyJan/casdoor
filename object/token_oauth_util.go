@@ -297,6 +297,21 @@ func CheckOAuthLogin(clientId string, responseType string, redirectUri string, s
 	return "", application, nil
 }
 
+func checkOAuthCodeUser(user *User, application *Application, lang string) (string, error) {
+	if user.IsDeleted {
+		return i18n.Translate(lang, "check:The user has been deleted and cannot be used to sign in, please contact the administrator"), nil
+	}
+
+	isUserOfApplication, err := IsUserOfApplication(user, application)
+	if err != nil {
+		return "", err
+	}
+	if !isUserOfApplication {
+		return i18n.Translate(lang, "auth:Unauthorized operation"), nil
+	}
+	return "", nil
+}
+
 func GetOAuthCode(userId string, clientId string, provider string, signinMethod string, responseType string, redirectUri string, scope string, state string, nonce string, challenge string, resource string, sessionId string, host string, lang string) (*Code, error) {
 	user, err := GetUser(userId)
 	if err != nil {
@@ -321,6 +336,17 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 		return nil, err
 	}
 
+	if msg != "" {
+		return &Code{
+			Message: msg,
+			Code:    "",
+		}, nil
+	}
+
+	msg, err = checkOAuthCodeUser(user, application, lang)
+	if err != nil {
+		return nil, err
+	}
 	if msg != "" {
 		return &Code{
 			Message: msg,
@@ -413,13 +439,6 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		}
 	}
 
-	if clientSecret != "" && application.ClientSecret != clientSecret {
-		return &TokenError{
-			Error:            InvalidClient,
-			ErrorDescription: "client_secret is invalid",
-		}, nil
-	}
-
 	// check whether the refresh token is valid, and has not expired.
 	token, err := GetTokenByRefreshToken(refreshToken)
 	if err != nil || token == nil {
@@ -427,6 +446,10 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 			Error:            InvalidGrant,
 			ErrorDescription: "refresh token is invalid or revoked",
 		}, nil
+	}
+
+	if tokenError := checkRefreshClientSecret(application, token, clientSecret); tokenError != nil {
+		return tokenError, nil
 	}
 
 	// check if the token has been invalidated (e.g., by SSO logout)
@@ -457,6 +480,11 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		}, nil
 	}
 	resource = token.Resource
+
+	dpopJkt, tokenError := getRefreshDPoPJkt(token, dpopProof, host)
+	if tokenError != nil {
+		return tokenError, nil
+	}
 
 	cert, err := getCertByApplication(application)
 	if err != nil {
@@ -543,6 +571,7 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		Scope:        scope,
 		TokenType:    "Bearer",
 		Resource:     resource,
+		GrantType:    token.GrantType,
 		// the refreshed token stays bound to the login session that minted the original one
 		SessionId: token.SessionId,
 	}
@@ -552,17 +581,9 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 	}
 
 	// Apply DPoP binding to the refreshed token if a DPoP proof was provided.
-	if dpopProof != "" {
-		dpopHtu := GetDPoPHtu(host, "/api/login/oauth/access_token")
-		jkt, err := ValidateDPoPProof(dpopProof, "POST", dpopHtu, "")
-		if err != nil {
-			return &TokenError{
-				Error:            "invalid_dpop_proof",
-				ErrorDescription: err.Error(),
-			}, nil
-		}
+	if dpopJkt != "" {
 		newToken.TokenType = "DPoP"
-		newToken.DPoPJkt = jkt
+		newToken.DPoPJkt = dpopJkt
 		if err = updateTokenDPoP(newToken); err != nil {
 			return nil, err
 		}
@@ -582,6 +603,24 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		Scope:        newToken.Scope,
 	}
 	return tokenWrapper, nil
+}
+
+// clientAuthenticatedGrantTypes mark the tokens of a client that authenticated with its secret,
+// their refresh tokens are of no use without the secret either
+var clientAuthenticatedGrantTypes = []string{"authorization_code", "urn:ietf:params:oauth:grant-type:token-exchange"}
+
+func checkRefreshClientSecret(application *Application, token *Token, clientSecret string) *TokenError {
+	if clientSecret == "" && !util.InSlice(clientAuthenticatedGrantTypes, token.GrantType) {
+		return nil
+	}
+
+	if application.ClientSecret != clientSecret {
+		return &TokenError{
+			Error:            InvalidClient,
+			ErrorDescription: "client_secret is invalid",
+		}
+	}
+	return nil
 }
 
 func ValidateJwtAssertion(clientAssertion string, application *Application, host string) (bool, *Claims, error) {
@@ -643,10 +682,15 @@ func ValidateClientAssertion(clientAssertion string, host string) (bool, *Applic
 
 // mintImplicitToken mints a token for an already-authenticated user.
 // Callers must verify user identity before calling this function.
-func mintImplicitToken(application *Application, username string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+func mintImplicitToken(application *Application, username string, scope string, nonce string, host string, clientIp string, lang string) (*Token, *TokenError, error) {
 	user, err := GetUserByFieldsForSharedApp(application, application.Organization, username)
 	if err != nil {
 		return nil, nil, err
+	}
+	if user != nil {
+		if tokenError := checkGrantUserSignin(application, user, clientIp, lang); tokenError != nil {
+			return nil, tokenError, nil
+		}
 	}
 	return mintTokenForUser(application, user, scope, nonce, host)
 }
@@ -754,7 +798,7 @@ func parseAndValidateSubjectToken(subjectToken string, requestingClientId string
 }
 
 // createGuestUserToken creates a new guest user and returns a token for them.
-func createGuestUserToken(application *Application, clientSecret string, verifier string) (*Token, *TokenError, error) {
+func createGuestUserToken(application *Application, clientSecret string, verifier string, lang string) (*Token, *TokenError, error) {
 	if clientSecret != "" && application.ClientSecret != clientSecret {
 		return nil, &TokenError{
 			Error:            InvalidClient,
@@ -815,7 +859,7 @@ func createGuestUserToken(application *Application, clientSecret string, verifie
 		RegisterSource:    fmt.Sprintf("%s/%s", application.Organization, application.Name),
 	}
 
-	affected, err := AddUser(guestUser, "en")
+	affected, err := AddUser(guestUser, lang)
 	if err != nil {
 		return nil, &TokenError{
 			Error:            EndpointError,

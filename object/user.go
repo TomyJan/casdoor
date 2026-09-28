@@ -20,19 +20,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/faceId"
 	"github.com/casdoor/casdoor/i18n"
-	"github.com/casdoor/casdoor/proxy"
 	"github.com/casdoor/casdoor/util"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/xorm-io/builder"
 	"github.com/xorm-io/core"
+	"github.com/xorm-io/xorm"
 )
 
 const (
@@ -813,14 +817,21 @@ var userSelfColumns = []string{
 	"location", "address", "addresses", "country_code", "region", "language", "affiliation", "title", "id_card_type", "id_card", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application", "register_type", "register_source",
 	"hash", "is_default_avatar", "properties", "webauthnCredentials", "mfa_items", "last_change_password_time", "managedAccounts", "face_ids", "mfaAccounts",
 	"signin_wrong_times", "last_signin_wrong_time", "groups", "mfa_phone_enabled", "mfa_email_enabled",
+	"type", "need_update_password", "ip_whitelist", "mfa_remember_deadline",
+	"cart", "application_scopes",
+}
+
+// userProviderColumns hold the IDs the sign-in by a provider looks the user up with, only the
+// link and unlink flows or an admin may set them, a user choosing their own would take over
+// the sign-in of whoever owns that provider account
+var userProviderColumns = []string{
 	"github", "google", "qq", "wechat", "facebook", "dingtalk", "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs",
 	"baidu", "alipay", "casdoor", "infoflow", "apple", "azuread", "azureadb2c", "slack", "steam", "bilibili", "okta", "douyin", "kwai", "line", "amazon",
 	"auth0", "battlenet", "bitbucket", "box", "cloudfoundry", "dailymotion", "deezer", "digitalocean", "discord", "dropbox",
 	"eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru", "meetup",
 	"microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify", "soundcloud",
-	"spotify", "strava", "stripe", "type", "telegram", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
-	"yammer", "yandex", "zoom", "oidc", "custom", "need_update_password", "ip_whitelist", "mfa_remember_deadline",
-	"cart", "application_scopes",
+	"spotify", "strava", "stripe", "telegram", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
+	"yammer", "yandex", "zoom", "oidc", "custom",
 }
 
 func FilterUserSelfColumns(columns []string) []string {
@@ -893,6 +904,7 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 		if isAdmin {
 			columns = append(columns, "name", "id", "email", "phone", "country_code", "type", "balance", "balance_credit", "balance_currency", "mfa_items", "register_type", "register_source",
 				"is_admin", "is_forbidden", "is_deleted", "uid_number", "email_verified")
+			columns = append(columns, userProviderColumns...)
 		}
 	}
 
@@ -1022,7 +1034,9 @@ func AddUser(user *User, lang string) (bool, error) {
 		return false, errors.New(i18n.Translate(lang, "user:the user's owner and name should not be empty"))
 	}
 
-	if CheckUsernameWithEmail(user.Name, "en") != "" {
+	user.Groups = getOrganizationGroups(user.Owner, user.Groups)
+
+	if CheckUsernameWithEmail(user.Name, lang) != "" {
 		user.Name = util.GetRandomName()
 	}
 
@@ -1384,8 +1398,7 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 
 	if strings.Contains(scope, "email") && allowed("Email") {
 		resp.Email = user.Email
-		// resp.EmailVerified = user.EmailVerified
-		resp.EmailVerified = true
+		resp.EmailVerified = user.EmailVerified
 	}
 
 	if strings.Contains(scope, "address") && allowed("Location") {
@@ -1630,17 +1643,45 @@ func (user *User) HasFaceIdImage() bool {
 	return false
 }
 
+const maxFaceIdImageSize = 10 << 20
+
+// getFaceIdImage fetches a face image the user set the URL of, so it must not reach the intranet,
+// except for the files uploaded to the "Local File System" storage, which are read from disk
+func getFaceIdImage(imageUrl string) ([]byte, error) {
+	if data, ok := readLocalUploadedFile(imageUrl); ok {
+		return data, nil
+	}
+
+	resp, err := util.NewInternetOnlyHttpClient(30 * time.Second).Get(imageUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(io.LimitReader(resp.Body, maxFaceIdImageSize))
+}
+
+func readLocalUploadedFile(fileUrl string) ([]byte, bool) {
+	urlObj, err := url.Parse(fileUrl)
+	if err != nil {
+		return nil, false
+	}
+
+	filePath := strings.TrimPrefix(urlObj.Path, "/files/")
+	if filePath == urlObj.Path || !filepath.IsLocal(filePath) {
+		return nil, false
+	}
+
+	data, err := os.ReadFile(filepath.Join("files", filePath))
+	return data, err == nil
+}
+
 func (user *User) CheckUserFace(faceIdImage []string, provider *Provider) (bool, error) {
 	faceIdChecker := faceId.GetFaceIdProvider(provider.Type, provider.ClientId, provider.ClientSecret, provider.Endpoint)
-	httpClient := proxy.DefaultHttpClient
 	errList := []error{}
 	for _, userFaceId := range user.FaceIds {
 		if userFaceId.ImageUrl != "" {
-			imgResp, err := httpClient.Get(userFaceId.ImageUrl)
-			if err != nil {
-				continue
-			}
-			imgByte, err := io.ReadAll(imgResp.Body)
+			imgByte, err := getFaceIdImage(userFaceId.ImageUrl)
 			if err != nil {
 				continue
 			}
@@ -1780,12 +1821,26 @@ func UpdateUserBalance(owner string, name string, balance float64, currency stri
 		}
 	}
 
-	// Validate new balance against credit limit
-	if newBalance < balanceCredit {
+	affected, err := incrBalance(ormer.Engine.ID(core.PK{owner, name}), "balance", convertedBalance, balanceCredit, &User{UpdatedTime: util.GetCurrentTime()})
+	if err != nil {
+		return err
+	}
+	if !affected {
 		return fmt.Errorf(i18n.Translate(lang, "general:Insufficient balance: new balance %v would be below credit limit %v"), newBalance, balanceCredit)
 	}
+	return nil
+}
 
-	user.Balance = newBalance
-	_, err = UpdateUser(user.GetId(), user, []string{"balance"}, true)
-	return err
+// incrBalance adds amount to the column in one statement, a spending is only applied while the
+// column stays at or above the credit, so concurrent payments cannot both spend the same balance
+func incrBalance(session *xorm.Session, column string, amount float64, credit float64, bean interface{}) (bool, error) {
+	if amount == 0 {
+		return true, nil
+	}
+	if amount < 0 {
+		session = session.Where(fmt.Sprintf("%s + ? >= ?", column), amount, credit)
+	}
+
+	affected, err := session.Incr(column, amount).Update(bean)
+	return affected != 0, err
 }

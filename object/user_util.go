@@ -15,6 +15,7 @@
 package object
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -551,7 +552,7 @@ func userVisible(isAdmin bool, item *AccountItem) bool {
 // leave one of them out must not hand it to its users
 var adminOnlyAccountItems = []string{"User type", "Tag", "Properties", "Groups", "Need update password", "IP whitelist"}
 
-func getAccountItemForUpdate(name string, organization *Organization) *AccountItem {
+func GetAccountItemForUpdate(name string, organization *Organization) *AccountItem {
 	item := GetAccountItemByName(name, organization)
 	if item == nil && util.InSlice(adminOnlyAccountItems, name) {
 		return &AccountItem{Name: name, ViewRule: "Admin", ModifyRule: "Admin"}
@@ -559,10 +560,44 @@ func getAccountItemForUpdate(name string, organization *Organization) *AccountIt
 	return item
 }
 
+func restoreAdminOnlyUserFields(oldUser, newUser *User) {
+	newUser.MfaPhoneEnabled = oldUser.MfaPhoneEnabled
+	newUser.MfaEmailEnabled = oldUser.MfaEmailEnabled
+	newUser.MfaItems = oldUser.MfaItems
+	newUser.MfaRememberDeadline = oldUser.MfaRememberDeadline
+	newUser.SigninWrongTimes = oldUser.SigninWrongTimes
+	newUser.LastSigninWrongTime = oldUser.LastSigninWrongTime
+	newUser.LastChangePasswordTime = oldUser.LastChangePasswordTime
+	newUser.RegisterType = oldUser.RegisterType
+	newUser.RegisterSource = oldUser.RegisterSource
+	newUser.WebauthnCredentials = getKeptWebauthnCredentials(oldUser.WebauthnCredentials, newUser.WebauthnCredentials)
+}
+
+func getKeptWebauthnCredentials(oldCredentials, newCredentials []webauthn.Credential) []webauthn.Credential {
+	if newCredentials == nil {
+		return oldCredentials
+	}
+
+	res := []webauthn.Credential{}
+	for _, oldCredential := range oldCredentials {
+		for _, newCredential := range newCredentials {
+			if bytes.Equal(oldCredential.ID, newCredential.ID) {
+				res = append(res, oldCredential)
+				break
+			}
+		}
+	}
+	return res
+}
+
 func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDisplayNameEmpty bool, lang string) (bool, string) {
 	organization, err := GetOrganizationByUser(oldUser)
 	if err != nil {
 		return false, err.Error()
+	}
+
+	if !isAdmin {
+		restoreAdminOnlyUserFields(oldUser, newUser)
 	}
 
 	var itemsChanged []*AccountItem
@@ -612,7 +647,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.Type != newUser.Type {
-		item := getAccountItemForUpdate("User type", organization)
+		item := GetAccountItemForUpdate("User type", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Type = oldUser.Type
 		} else {
@@ -701,7 +736,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.Tag != newUser.Tag {
-		item := getAccountItemForUpdate("Tag", organization)
+		item := GetAccountItemForUpdate("Tag", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Tag = oldUser.Tag
 		} else {
@@ -855,7 +890,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 	}
 	newUserPropertiesJson, _ := json.Marshal(newUser.Properties)
 	if string(oldUserPropertiesJson) != string(newUserPropertiesJson) {
-		item := getAccountItemForUpdate("Properties", organization)
+		item := GetAccountItemForUpdate("Properties", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Properties = oldUser.Properties
 		} else {
@@ -882,7 +917,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 	}
 	newUserGroupsJson, _ := json.Marshal(newUser.Groups)
 	if string(oldUserGroupsJson) != string(newUserGroupsJson) {
-		item := getAccountItemForUpdate("Groups", organization)
+		item := GetAccountItemForUpdate("Groups", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.Groups = oldUser.Groups
 		} else {
@@ -943,7 +978,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.NeedUpdatePassword != newUser.NeedUpdatePassword {
-		item := getAccountItemForUpdate("Need update password", organization)
+		item := GetAccountItemForUpdate("Need update password", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.NeedUpdatePassword = oldUser.NeedUpdatePassword
 		} else {
@@ -951,7 +986,7 @@ func CheckPermissionForUpdateUser(oldUser, newUser *User, isAdmin bool, allowDis
 		}
 	}
 	if oldUser.IpWhitelist != newUser.IpWhitelist {
-		item := getAccountItemForUpdate("IP whitelist", organization)
+		item := GetAccountItemForUpdate("IP whitelist", organization)
 		if !userVisible(isAdmin, item) {
 			newUser.IpWhitelist = oldUser.IpWhitelist
 		} else {
@@ -1066,7 +1101,7 @@ func GetAppUser(userId string) (*User, error) {
 	}
 
 	organization, appName := ParseAppUserId(userId)
-	application, err := getApplication("admin", appName)
+	application, err := getAppUserApplication(appName)
 	if err != nil || application == nil || application.IsDynamicClient() {
 		return nil, err
 	}
@@ -1077,6 +1112,13 @@ func GetAppUser(userId string) (*User, error) {
 	}
 
 	return &User{Owner: application.Organization, Name: userId, IsAdmin: true}, nil
+}
+
+func getAppUserApplication(name string) (*Application, error) {
+	if realName, _ := util.GetSharedOrgFromApp(name); realName != name {
+		return nil, nil
+	}
+	return getApplication("admin", name)
 }
 
 func (application *Application) IsDynamicClient() bool {

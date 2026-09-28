@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ type CLIVersionInfo struct {
 var (
 	cliVersionCache = make(map[string]*CLIVersionInfo)
 	cliVersionMutex sync.RWMutex
+	reCliLanguage   = regexp.MustCompile(`^[a-z]+$`)
 )
 
 // cleanOldMEIFolders cleans up old _MEIXXX folders from the Casdoor temp directory
@@ -185,7 +187,7 @@ func processArgsToTempFiles(args []string) ([]string, []string, error) {
 // @Success 200 {object} controllers.Response The Response object
 // @router /run-casbin-command [get]
 func (c *ApiController) RunCasbinCommand() {
-	if !conf.IsDemoMode() && !c.IsAdmin() {
+	if !conf.IsDemoMode() && !c.IsGlobalAdmin() {
 		c.ResponseError(c.T("auth:Unauthorized operation"))
 		return
 	}
@@ -200,6 +202,10 @@ func (c *ApiController) RunCasbinCommand() {
 
 	if language == "" {
 		language = "go"
+	}
+	if !reCliLanguage.MatchString(language) {
+		c.ResponseError(fmt.Sprintf("the language: %s is not supported", language))
+		return
 	}
 	// use "casbin-go-cli" by default, can be also "casbin-java-cli", "casbin-node-cli", etc.
 	// the pre-built binary of "casbin-go-cli" can be found at: https://github.com/casbin/casbin-go-cli/releases

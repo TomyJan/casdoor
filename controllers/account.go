@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/beego/beego/v2/core/logs"
-	"github.com/casdoor/casdoor/captcha"
 	"github.com/casdoor/casdoor/form"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
@@ -137,12 +136,8 @@ func (c *ApiController) Signup() {
 			return
 		}
 
-		if captchaProvider.Type != "Default" {
-			authForm.ClientSecret = captchaProvider.ClientSecret
-		}
-
 		var isHuman bool
-		isHuman, err = captcha.VerifyCaptchaByCaptchaType(authForm.CaptchaType, authForm.CaptchaToken, captchaProvider.ClientId, authForm.ClientSecret, captchaProvider.ClientId2)
+		isHuman, err = verifyAuthFormCaptcha(captchaProvider, &authForm)
 		if err != nil {
 			c.ResponseError(err.Error())
 			return
@@ -173,14 +168,9 @@ func (c *ApiController) Signup() {
 	userEmailVerified := false
 
 	if application.IsSignupFieldVisible("Email") && application.GetSignupFieldRule("Email") != "No verification" && authForm.Email != "" {
-		var checkResult *object.VerifyResult
-		checkResult, err = object.CheckVerificationCode(authForm.Email, authForm.EmailCode, c.GetAcceptLanguage())
+		err = object.CheckVerifyCodeWithLimitAndIp(nil, clientIp, authForm.Email, authForm.EmailCode, c.GetAcceptLanguage())
 		if err != nil {
-			c.ResponseError(c.T(err.Error()))
-			return
-		}
-		if checkResult.Code != object.VerificationSuccess {
-			c.ResponseError(checkResult.Msg)
+			c.ResponseError(err.Error())
 			return
 		}
 
@@ -191,14 +181,9 @@ func (c *ApiController) Signup() {
 	if application.IsSignupFieldVisible("Phone") && application.GetSignupFieldRule("Phone") != "No verification" && authForm.Phone != "" {
 		checkPhone, _ = util.GetE164Number(authForm.Phone, authForm.CountryCode)
 
-		var checkResult *object.VerifyResult
-		checkResult, err = object.CheckVerificationCode(checkPhone, authForm.PhoneCode, c.GetAcceptLanguage())
+		err = object.CheckVerifyCodeWithLimitAndIp(nil, clientIp, checkPhone, authForm.PhoneCode, c.GetAcceptLanguage())
 		if err != nil {
-			c.ResponseError(c.T(err.Error()))
-			return
-		}
-		if checkResult.Code != object.VerificationSuccess {
-			c.ResponseError(checkResult.Msg)
+			c.ResponseError(err.Error())
 			return
 		}
 	}
@@ -323,6 +308,7 @@ func (c *ApiController) Signup() {
 	}
 
 	if user.Type == "normal-user" {
+		c.renewSessionIdForUser(user.GetId())
 		c.SetSessionUsername(user.GetId())
 	} else if user.Type == "paid-user" {
 		c.SetSession("paidUsername", user.GetId())

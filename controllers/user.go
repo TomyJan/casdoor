@@ -811,7 +811,7 @@ func (c *ApiController) RemoveUserFromGroup() {
 	if err != nil {
 		return
 	}
-	item := object.GetAccountItemByName("Groups", organization)
+	item := object.GetAccountItemForUpdate("Groups", organization)
 	res, msg := object.CheckAccountItemModifyRule(item, c.IsAdmin(), c.GetAcceptLanguage())
 	if !res {
 		c.ResponseError(msg)
@@ -993,6 +993,11 @@ func (c *ApiController) VerifyIdentification() {
 
 		if provider.Category != "ID Verification" {
 			c.ResponseError(c.T("provider:Provider is not an ID Verification provider"))
+			return
+		}
+
+		if !isProviderVisibleToUser(provider, user) {
+			c.ResponseError(c.T("auth:Unauthorized operation"))
 			return
 		}
 	}

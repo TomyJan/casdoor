@@ -123,9 +123,8 @@ func SendVerificationCodeToEmail(organization *Organization, user *User, provide
 	// "You have requested a verification code at Casdoor. Here is your code: %s, please enter in 5 minutes."
 	content := strings.Replace(provider.Content, "%s", code, 1)
 
-	if method == "forget" {
-		originFrontend, _ := getOriginFromHost(host)
-
+	originFrontend, isOriginTrusted := getTrustedOriginFrontend(host)
+	if method == "forget" && isOriginTrusted {
 		query := url.Values{}
 		query.Add("code", code)
 		query.Add("username", user.Name)
@@ -442,6 +441,23 @@ func CheckVerifyCodeWithLimit(user *User, dest, code, lang string) error {
 	default:
 		return errors.New(result.Msg)
 	}
+}
+
+func CheckFaceIdWithLimit(user *User, check func() error, lang string) error {
+	err := checkSigninErrorTimes(user, lang)
+	if err != nil {
+		return err
+	}
+
+	err = check()
+	if err != nil {
+		if recordErr := recordSigninErrorInfo(user, lang); recordErr != nil {
+			return fmt.Errorf("%s, %s", err.Error(), recordErr.Error())
+		}
+		return err
+	}
+
+	return resetUserSigninErrorTimes(user)
 }
 
 func CheckFaceId(user *User, faceId []float64, lang string) error {

@@ -400,7 +400,7 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
     ),
     "Country/Region": (
       <AccountItemRow name="Country/Region" labelKey="user:Country/Region">
-        <Input value={user.region ?? ""} onChange={(e) => updateField("region", e.target.value)} />
+        <RegionSelect value={user.region ?? ""} onChange={(v) => updateField("region", v)} />
       </AccountItemRow>
     ),
     "Location": (
@@ -633,7 +633,13 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
     ),
     "UID number": (
       <AccountItemRow name="UID number" labelKey="general:UID number">
-        <Input value={user.uidNumber ?? ""} onChange={(e) => updateField("uidNumber", e.target.value)} />
+        <Input
+          type="number"
+          min={0}
+          step={1}
+          value={user.uidNumber ?? 0}
+          onChange={(e) => updateField("uidNumber", Setting.myParseInt(e.target.value))}
+        />
       </AccountItemRow>
     ),
     "Ranking": (
