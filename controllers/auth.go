@@ -532,6 +532,19 @@ func (c *ApiController) promptMfaSetup(user *object.User, organization *object.O
 	return true
 }
 
+func (c *ApiController) checkSigninCompleted(user *object.User) bool {
+	isSigninPending, err := object.IsSigninPending(user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return false
+	}
+	if isSigninPending {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return false
+	}
+	return true
+}
+
 func (c *ApiController) promptMfaSetupAfterMfa(user *object.User) bool {
 	organization, err := object.GetOrganizationByUser(user)
 	if err != nil {
@@ -587,7 +600,7 @@ func getExistUserByBindingRule(providerItem *object.ProviderItem, application *o
 			if err != nil {
 				return nil, err
 			}
-			if user != nil {
+			if user != nil && isEmailBindable(user) {
 				return user, nil
 			}
 		}
@@ -618,7 +631,11 @@ func getExistUserByBindingRule(providerItem *object.ProviderItem, application *o
 		}
 	}
 
-	return user, nil
+	return nil, nil
+}
+
+func isEmailBindable(user *object.User) bool {
+	return user.EmailVerified || user.RegisterType != "Application Signup"
 }
 
 func getUserByProvider(organization string, provider *object.Provider, providerId string) (*object.User, error) {
@@ -1105,7 +1122,6 @@ func (c *ApiController) Login() {
 					c.ResponseError(err.Error())
 					return
 				}
-				isBoundUser := user != nil
 
 				if user == nil {
 					if !application.EnableSignUp || !application.IsSignupAllowedFor(application.Organization) {
@@ -1274,8 +1290,7 @@ func (c *ApiController) Login() {
 					return
 				}
 
-				// binding to an existing account is a sign-in to it, so its MFA applies
-				if isBoundUser && checkMfaEnable(c, user, organization, verificationType) {
+				if checkMfaEnable(c, user, organization, verificationType) {
 					return
 				}
 
