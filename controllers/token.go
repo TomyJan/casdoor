@@ -212,6 +212,9 @@ func (c *ApiController) requireTokenPermission(token *object.Token, checkApplica
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/access_token [post]
 func (c *ApiController) GetOAuthToken() {
+	c.Ctx.Output.Header("Cache-Control", "no-store")
+	c.Ctx.Output.Header("Pragma", "no-cache")
+
 	clientId := c.Ctx.Input.Query("client_id")
 	clientSecret := c.Ctx.Input.Query("client_secret")
 	assertion := c.Ctx.Input.Query("assertion")
@@ -224,6 +227,7 @@ func (c *ApiController) GetOAuthToken() {
 	nonce := c.Ctx.Input.Query("nonce")
 	username := c.Ctx.Input.Query("username")
 	password := c.Ctx.Input.Query("password")
+	countryCode := c.Ctx.Input.Query("country_code")
 	tag := c.Ctx.Input.Query("tag")
 	avatar := c.Ctx.Input.Query("avatar")
 	refreshToken := c.Ctx.Input.Query("refresh_token")
@@ -274,6 +278,9 @@ func (c *ApiController) GetOAuthToken() {
 			}
 			if password == "" {
 				password = tokenRequest.Password
+			}
+			if countryCode == "" {
+				countryCode = tokenRequest.CountryCode
 			}
 			if tag == "" {
 				tag = tokenRequest.Tag
@@ -387,7 +394,7 @@ func (c *ApiController) GetOAuthToken() {
 		return
 	}
 
-	token, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, nonce, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), subjectToken, subjectTokenType, assertion, clientAssertion, clientAssertionType, audience, resource, dpopProof, util.GetClientIpFromRequest(c.Ctx.Request))
+	token, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, nonce, username, password, countryCode, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), subjectToken, subjectTokenType, assertion, clientAssertion, clientAssertionType, audience, resource, dpopProof, util.GetClientIpFromRequest(c.Ctx.Request))
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -419,6 +426,9 @@ func (c *ApiController) GetOAuthToken() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/refresh_token [post]
 func (c *ApiController) RefreshToken() {
+	c.Ctx.Output.Header("Cache-Control", "no-store")
+	c.Ctx.Output.Header("Pragma", "no-cache")
+
 	grantType := c.Ctx.Input.Query("grant_type")
 	refreshToken := c.Ctx.Input.Query("refresh_token")
 	scope := c.Ctx.Input.Query("scope")
@@ -485,7 +495,7 @@ func (c *ApiController) ValidateOAuth(ignoreValidSecret bool) (ok bool, applicat
 	}
 
 	if clientAssertionType == "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
-		ok, application, err = object.ValidateClientAssertion(clientAssertion, c.Ctx.Request.Host)
+		ok, application, err = object.ValidateClientAssertion(clientAssertion, reqClientId, c.Ctx.Request.Host)
 		if err != nil {
 			c.ResponseTokenError(object.InvalidClient, err.Error())
 			return

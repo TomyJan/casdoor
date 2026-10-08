@@ -13,8 +13,9 @@ import {PasswordInput} from "@/components/common/PasswordInput";
 import {SearchableSelect} from "@/components/common/SearchableSelect";
 import {RegionSelect} from "@/components/common/RegionSelect";
 import {CustomHtml, CustomStyle} from "@/components/common/CustomHtml";
+import {isTrustedApplication} from "@/lib/custom-html";
 import {AuthDivider, AuthLayout} from "@/components/auth/AuthLayout";
-import {AgreementCheckbox, getAgreementDefaultValue} from "@/components/auth/AgreementModal";
+import {AgreementCheckbox} from "@/components/auth/AgreementModal";
 import {ProviderButtons, getVisibleProviders} from "@/components/auth/ProviderButtons";
 import {SendCodeInput} from "@/components/auth/SendCodeInput";
 import {CaptchaModal} from "@/components/common/CaptchaModal";
@@ -36,7 +37,7 @@ const SIMPLE_TEXT_ITEMS: Record<string, string> = {
   "ID card": "user:ID card",
   "Real name": "application:Real name",
   "Bio": "user:Bio",
-  "Tag": "user:Tag",
+  "Tag": "general:Tag",
   "Education": "user:Education",
   "Gender": "user:Gender",
   "First name": "general:First name",
@@ -66,7 +67,7 @@ export default function SignupPage({application: applicationProp}: {application?
   const [application, setApplication] = React.useState<any>(undefined);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [values, setValues] = React.useState<Record<string, any>>({});
-  const [agreed, setAgreed] = React.useState(false);
+  const [agreed, setAgreed] = React.useState(true);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(false);
   const [captchaVisible, setCaptchaVisible] = React.useState(false);
@@ -81,7 +82,7 @@ export default function SignupPage({application: applicationProp}: {application?
   React.useEffect(() => {
     if (applicationProp) {
       setApplication(applicationProp);
-      setAgreed(getAgreementDefaultValue(applicationProp));
+      setAgreed(true);
       setValues((prev) => ({
         ...prev,
         application: applicationProp.name,
@@ -104,7 +105,7 @@ export default function SignupPage({application: applicationProp}: {application?
       .then((res: any) => {
         if (res.status === "ok" && res.data) {
           setApplication(res.data);
-          setAgreed(getAgreementDefaultValue(res.data));
+          setAgreed(true);
           const invitationCode = searchParams.get("invitationCode") ?? "";
           setValues((prev) => ({
             ...prev,
@@ -191,7 +192,8 @@ export default function SignupPage({application: applicationProp}: {application?
 
   const signinLink = Setting.getStoredSigninUrl() || Setting.getLoginLink(application) || "/login";
 
-  if (!application.enableSignUp) {
+  // without self signup, only an invitation link opens the signup form
+  if (!application.enableSignUp || (application.disableSelfSignup && !values.invitationCode)) {
     return (
       <AuthLayout preview={!!applicationProp} application={application}>
         <div className="space-y-4">
@@ -473,7 +475,7 @@ export default function SignupPage({application: applicationProp}: {application?
   const renderItem = (item: any) => {
     if (Setting.isCustomFormItem(item)) {
       // a "Text N" item is raw HTML, kept in the label by the application editor
-      return <CustomHtml key={item.name} html={item.label} />;
+      return <CustomHtml key={item.name} html={item.label} trusted={isTrustedApplication(application)} className="text-center" />;
     }
 
     switch (item.name) {
@@ -654,7 +656,7 @@ export default function SignupPage({application: applicationProp}: {application?
 
   // The whole page can be replaced by the application's own markup.
   if (application.signupHtml) {
-    return <CustomHtml html={application.signupHtml} />;
+    return <CustomHtml html={application.signupHtml} trusted={isTrustedApplication(application)} />;
   }
 
   // an application that lists no signup button at all still gets the default one

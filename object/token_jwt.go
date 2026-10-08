@@ -15,7 +15,11 @@
 package object
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"fmt"
+	"hash"
 	"reflect"
 	"strings"
 	"time"
@@ -23,6 +27,14 @@ import (
 	"github.com/casdoor/casdoor/util"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// OidcIdTokenClaims are the ID token claims that depend on how the user signed in and on the
+// authorization response, see https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+type OidcIdTokenClaims struct {
+	AuthTime *jwt.NumericDate `json:"auth_time,omitempty"`
+	AtHash   string           `json:"at_hash,omitempty"`
+	CHash    string           `json:"c_hash,omitempty"`
+}
 
 type Claims struct {
 	*User
@@ -35,6 +47,7 @@ type Claims struct {
 	Provider string `json:"provider,omitempty"`
 
 	SigninMethod string `json:"signinMethod,omitempty"`
+	OidcIdTokenClaims
 	jwt.RegisteredClaims
 }
 
@@ -86,7 +99,7 @@ type UserWithoutThirdIdp struct {
 	CountryCode       string   `xorm:"varchar(6)" json:"countryCode"`
 	Region            string   `xorm:"varchar(100)" json:"region"`
 	Location          string   `xorm:"varchar(100)" json:"location"`
-	Address           []string `json:"address"`
+	Address           []string `json:"address,omitempty"`
 	Affiliation       string   `xorm:"varchar(100)" json:"affiliation"`
 	Title             string   `xorm:"varchar(100)" json:"title"`
 	IdCardType        string   `xorm:"varchar(100)" json:"idCardType"`
@@ -159,16 +172,17 @@ type ClaimsShort struct {
 	Provider  string `json:"provider,omitempty"`
 
 	SigninMethod string `json:"signinMethod,omitempty"`
+	OidcIdTokenClaims
 	jwt.RegisteredClaims
 }
 
 type OIDCAddress struct {
-	Formatted     string `json:"formatted"`
-	StreetAddress string `json:"street_address"`
-	Locality      string `json:"locality"`
-	Region        string `json:"region"`
-	PostalCode    string `json:"postal_code"`
-	Country       string `json:"country"`
+	Formatted     string `json:"formatted,omitempty"`
+	StreetAddress string `json:"street_address,omitempty"`
+	Locality      string `json:"locality,omitempty"`
+	Region        string `json:"region,omitempty"`
+	PostalCode    string `json:"postal_code,omitempty"`
+	Country       string `json:"country,omitempty"`
 }
 
 type ClaimsWithoutThirdIdp struct {
@@ -181,6 +195,7 @@ type ClaimsWithoutThirdIdp struct {
 	Provider  string `json:"provider,omitempty"`
 
 	SigninMethod string `json:"signinMethod,omitempty"`
+	OidcIdTokenClaims
 	jwt.RegisteredClaims
 }
 
@@ -214,6 +229,15 @@ func getStandardUser(user *User) *UserStandard {
 	return res
 }
 
+func getNonEmptyAddress(address []string) []string {
+	for _, line := range address {
+		if strings.TrimSpace(line) != "" {
+			return address
+		}
+	}
+	return nil
+}
+
 func getUserWithoutThirdIdp(user *User) *UserWithoutThirdIdp {
 	res := &UserWithoutThirdIdp{
 		Owner:       user.Owner,
@@ -239,7 +263,7 @@ func getUserWithoutThirdIdp(user *User) *UserWithoutThirdIdp {
 		CountryCode:       user.CountryCode,
 		Region:            user.Region,
 		Location:          user.Location,
-		Address:           user.Address,
+		Address:           getNonEmptyAddress(user.Address),
 		Affiliation:       user.Affiliation,
 		Title:             user.Title,
 		IdCardType:        user.IdCardType,
@@ -306,14 +330,15 @@ func getUserWithoutThirdIdp(user *User) *UserWithoutThirdIdp {
 
 func getShortClaims(claims Claims) ClaimsShort {
 	res := ClaimsShort{
-		UserShort:        getShortUser(claims.User),
-		TokenType:        claims.TokenType,
-		Nonce:            claims.Nonce,
-		Scope:            claims.Scope,
-		RegisteredClaims: claims.RegisteredClaims,
-		Azp:              claims.Azp,
-		SigninMethod:     claims.SigninMethod,
-		Provider:         claims.Provider,
+		UserShort:         getShortUser(claims.User),
+		TokenType:         claims.TokenType,
+		Nonce:             claims.Nonce,
+		Scope:             claims.Scope,
+		RegisteredClaims:  claims.RegisteredClaims,
+		Azp:               claims.Azp,
+		SigninMethod:      claims.SigninMethod,
+		Provider:          claims.Provider,
+		OidcIdTokenClaims: claims.OidcIdTokenClaims,
 	}
 	return res
 }
@@ -329,6 +354,7 @@ func getClaimsWithoutThirdIdp(claims Claims) ClaimsWithoutThirdIdp {
 		Azp:                 claims.Azp,
 		SigninMethod:        claims.SigninMethod,
 		Provider:            claims.Provider,
+		OidcIdTokenClaims:   claims.OidcIdTokenClaims,
 	}
 	return res
 }
@@ -377,6 +403,15 @@ func getUserFieldValue(user *User, fieldName string) (interface{}, bool) {
 	return nil, false
 }
 
+func getRefreshClaimsCustom(claims Claims, tokenField []string, tokenAttributes []*JwtItem, refreshExpireTime time.Time) jwt.MapClaims {
+	res := getClaimsCustom(claims, tokenField, tokenAttributes)
+	res["exp"] = jwt.NewNumericDate(refreshExpireTime)
+	// overwrite the "access-token" set by getClaimsCustom(), so that the refresh token
+	// can't be used as an access token
+	res["tokenType"] = "refresh-token"
+	return res
+}
+
 func getClaimsCustom(claims Claims, tokenField []string, tokenAttributes []*JwtItem) jwt.MapClaims {
 	res := make(jwt.MapClaims)
 
@@ -393,6 +428,16 @@ func getClaimsCustom(claims Claims, tokenField []string, tokenAttributes []*JwtI
 
 	// Always include tokenType (essential metadata)
 	res["tokenType"] = claims.TokenType
+
+	if claims.AuthTime != nil {
+		res["auth_time"] = claims.AuthTime
+	}
+	if claims.AtHash != "" {
+		res["at_hash"] = claims.AtHash
+	}
+	if claims.CHash != "" {
+		res["c_hash"] = claims.CHash
+	}
 
 	// Always include azp if present (authorized party)
 	if claims.Azp != "" {
@@ -532,7 +577,38 @@ func refineUser(user *User) *User {
 	return user
 }
 
+// jwtTokenOptions carries what the ID token has to say about the authorization request
+type jwtTokenOptions struct {
+	// AuthTime is when the user last entered credentials, 0 if unknown
+	AuthTime int64
+	// Code is the authorization code returned together with the ID token, for its c_hash
+	Code string
+	// WithAtHash adds the at_hash of the access token issued together with the ID token
+	WithAtHash bool
+}
+
+// getOidcHash returns the left-most half of the hash of value, base64url encoded, using the hash
+// algorithm of the JWS signing algorithm, as required for at_hash and c_hash
+func getOidcHash(value string, method jwt.SigningMethod) string {
+	var h hash.Hash
+	switch method.Alg() {
+	case "RS384", "ES384", "PS384":
+		h = sha512.New384()
+	case "RS512", "ES512", "PS512":
+		h = sha512.New()
+	default:
+		h = sha256.New()
+	}
+	h.Write([]byte(value))
+	sum := h.Sum(nil)
+	return base64.RawURLEncoding.EncodeToString(sum[:len(sum)/2])
+}
+
 func generateJwtToken(application *Application, user *User, provider string, signinMethod string, nonce string, scope string, resource string, host string) (string, string, string, string, error) {
+	return generateJwtTokenWithOptions(application, user, provider, signinMethod, nonce, scope, resource, host, jwtTokenOptions{})
+}
+
+func generateJwtTokenWithOptions(application *Application, user *User, provider string, signinMethod string, nonce string, scope string, resource string, host string, options jwtTokenOptions) (string, string, string, string, error) {
 	nowTime := time.Now()
 	expireTime := nowTime.Add(time.Duration(application.ExpireInHours * float64(time.Hour)))
 	refreshExpireTime := nowTime.Add(time.Duration(application.RefreshExpireInHours * float64(time.Hour)))
@@ -578,6 +654,10 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 		},
 	}
 
+	if options.AuthTime > 0 {
+		claims.AuthTime = jwt.NewNumericDate(time.Unix(options.AuthTime, 0))
+	}
+
 	if application.IsShared {
 		claims.Audience = []string{application.ClientId + "-org-" + user.Owner}
 	}
@@ -595,7 +675,8 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 
 	var token *jwt.Token
 	var refreshToken *jwt.Token
-	var idToken *jwt.Token
+	// the ID token is created once the access token is signed, its at_hash depends on it
+	var newIdToken func() *jwt.Token
 
 	if application.TokenFormat == "" {
 		application.TokenFormat = "JWT"
@@ -622,7 +703,7 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 		claimsWithoutThirdIdp := getClaimsWithoutThirdIdp(claims)
 
 		token = jwt.NewWithClaims(jwtMethod, claimsWithoutThirdIdp)
-		idToken = jwt.NewWithClaims(jwtMethod, getClaimsWithoutThirdIdp(idClaims))
+		newIdToken = func() *jwt.Token { return jwt.NewWithClaims(jwtMethod, getClaimsWithoutThirdIdp(idClaims)) }
 		claimsWithoutThirdIdp.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
 		claimsWithoutThirdIdp.TokenType = "refresh-token"
 		refreshToken = jwt.NewWithClaims(jwtMethod, claimsWithoutThirdIdp)
@@ -630,7 +711,7 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 		claimsShort := getShortClaims(claims)
 
 		token = jwt.NewWithClaims(jwtMethod, claimsShort)
-		idToken = jwt.NewWithClaims(jwtMethod, getShortClaims(idClaims))
+		newIdToken = func() *jwt.Token { return jwt.NewWithClaims(jwtMethod, getShortClaims(idClaims)) }
 		claimsShort.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
 		claimsShort.TokenType = "refresh-token"
 		refreshToken = jwt.NewWithClaims(jwtMethod, claimsShort)
@@ -638,16 +719,15 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 		claimsCustom := getClaimsCustom(claims, application.TokenFields, application.TokenAttributes)
 
 		token = jwt.NewWithClaims(jwtMethod, claimsCustom)
-		idToken = jwt.NewWithClaims(jwtMethod, getClaimsCustom(idClaims, application.TokenFields, application.TokenAttributes))
-		refreshClaims := getClaimsCustom(claims, application.TokenFields, application.TokenAttributes)
-		refreshClaims["exp"] = jwt.NewNumericDate(refreshExpireTime)
-		refreshClaims["TokenType"] = "refresh-token"
-		refreshToken = jwt.NewWithClaims(jwtMethod, refreshClaims)
+		newIdToken = func() *jwt.Token {
+			return jwt.NewWithClaims(jwtMethod, getClaimsCustom(idClaims, application.TokenFields, application.TokenAttributes))
+		}
+		refreshToken = jwt.NewWithClaims(jwtMethod, getRefreshClaimsCustom(claims, application.TokenFields, application.TokenAttributes, refreshExpireTime))
 	} else if application.TokenFormat == "JWT-Standard" {
 		claimsStandard := getStandardClaims(claims)
 
 		token = jwt.NewWithClaims(jwtMethod, claimsStandard)
-		idToken = jwt.NewWithClaims(jwtMethod, getStandardClaims(idClaims))
+		newIdToken = func() *jwt.Token { return jwt.NewWithClaims(jwtMethod, getStandardClaims(idClaims)) }
 		claimsStandard.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
 		claimsStandard.TokenType = "refresh-token"
 		refreshToken = jwt.NewWithClaims(jwtMethod, claimsStandard)
@@ -699,6 +779,13 @@ func generateJwtToken(application *Application, user *User, provider string, sig
 		return "", "", "", "", err
 	}
 
+	if options.Code != "" {
+		idClaims.CHash = getOidcHash(options.Code, jwtMethod)
+	}
+	if options.WithAtHash {
+		idClaims.AtHash = getOidcHash(tokenString, jwtMethod)
+	}
+	idToken := newIdToken()
 	idToken.Header["kid"] = cert.Name
 	idTokenString, err = idToken.SignedString(key)
 

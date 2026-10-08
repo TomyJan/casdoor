@@ -53,6 +53,7 @@ var defaultApiRules = [][]string{
 	{"*", "*", "POST", "/api/device-auth-complete", "*", "*"},
 	{"*", "*", "GET", "/api/get-account", "*", "*"},
 	{"*", "*", "GET", "/api/userinfo", "*", "*"},
+	{"*", "*", "POST", "/api/userinfo", "*", "*"},
 	{"*", "*", "GET", "/api/user", "*", "*"},
 	{"*", "*", "GET", "/api/health", "*", "*"},
 	{"*", "*", "*", "/api/webhook", "*", "*"},
@@ -83,6 +84,8 @@ var defaultApiRules = [][]string{
 	{"*", "*", "POST", "/api/validate-coupon", "*", "*"},
 	{"*", "*", "POST", "/api/unlink", "*", "*"},
 	{"*", "*", "POST", "/api/set-password", "*", "*"},
+	{"*", "*", "GET", "/api/get-init-admin-status", "*", "*"},
+	{"*", "*", "POST", "/api/init-admin-password", "*", "*"},
 	{"*", "*", "POST", "/api/send-verification-code", "*", "*"},
 	{"*", "*", "GET", "/api/get-captcha", "*", "*"},
 	{"*", "*", "POST", "/api/verify-captcha", "*", "*"},
@@ -125,8 +128,6 @@ var defaultApiRules = [][]string{
 	{"*", "*", "GET", "/api/get-all-objects", "*", "*"},
 	{"*", "*", "GET", "/api/get-all-actions", "*", "*"},
 	{"*", "*", "GET", "/api/get-all-roles", "*", "*"},
-	{"*", "*", "GET", "/api/run-casbin-command", "*", "*"},
-	{"*", "*", "POST", "/api/refresh-engines", "*", "*"},
 	{"*", "*", "GET", "/api/get-invitation-info", "*", "*"},
 	{"*", "*", "GET", "/api/faceid-signin-begin", "*", "*"},
 	{"*", "*", "GET", "/api/kerberos-login", "*", "*"},
@@ -141,6 +142,10 @@ var obsoleteApiRules = [][]string{
 	// Superseded by org-scoped enforcement in IsAllowed; keeping this in the
 	// DB gives a false impression that app credentials are unrestricted.
 	{"app", "*", "*", "*", "*", "*"},
+	// These API routes were removed upstream. Remove their previously seeded
+	// public rules from existing databases during the next initialization.
+	{"*", "*", "GET", "/api/run-casbin-command", "*", "*"},
+	{"*", "*", "POST", "/api/refresh-engines", "*", "*"},
 }
 
 func InitApi() {

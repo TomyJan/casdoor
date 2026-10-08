@@ -37,6 +37,41 @@ func checkDataSourceFields(fields map[string]string) error {
 	return nil
 }
 
+// isTrustedDbHost reports whether the host is listed in the trusted database hosts of the
+// organization, as "host" (any port) or "host:port". Only a global admin can change the list.
+func isTrustedDbHost(organizationName string, host string, port int) bool {
+	host = strings.Trim(host, "[]")
+	if host == "" || organizationName == "" {
+		return false
+	}
+
+	organization, err := getOrganization("admin", organizationName)
+	if err != nil || organization == nil {
+		return false
+	}
+
+	for _, entry := range strings.Split(organization.TrustedDbHosts, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		entryHost, entryPort := entry, port
+		if h, p, err := net.SplitHostPort(entry); err == nil {
+			entryPort, err = strconv.Atoi(p)
+			if err != nil {
+				continue
+			}
+			entryHost = h
+		}
+
+		if entryPort == port && strings.EqualFold(strings.Trim(entryHost, "[]"), host) {
+			return true
+		}
+	}
+	return false
+}
+
 func getOwnDbAddress() (host string, port int, ok bool) {
 	dataSourceName := conf.GetConfigDataSourceName()
 	switch conf.GetConfigString("driverName") {
