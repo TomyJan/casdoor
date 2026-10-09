@@ -496,10 +496,13 @@ export default function LoginPage({type = "login", application: applicationProp,
           } else if (promptNone) {
             redirectWithOAuthError("interaction_required");
           } else {
-            navigate(
-              `/prompt/${application.name}?redirectUri=${encodeURIComponent(
-                oAuthParams.redirectUri,
-              )}&code=${encodeURIComponent(codeValue)}&state=${encodeURIComponent(oAuthParams.state)}`,
+            // the prompt page renders the signed-in account, so it has to be loaded first
+            reload().then(() =>
+              navigate(
+                `/prompt/${application.name}?redirectUri=${encodeURIComponent(
+                  oAuthParams.redirectUri,
+                )}&code=${encodeURIComponent(codeValue)}&state=${encodeURIComponent(oAuthParams.state)}`,
+              ),
             );
           }
         } else if (promptNone) {
@@ -893,7 +896,7 @@ export default function LoginPage({type = "login", application: applicationProp,
     signInWithWebAuthn(application, username, values, oAuthParams)
       .then((res: any) => {
         if (res?.status === "ok") {
-          handleLoginResult(res, values, oAuthParams);
+          checkMfa(res, values, oAuthParams, (ok) => handleLoginResult(ok, values, oAuthParams));
         } else {
           Setting.showMessage("error", res?.msg);
         }
