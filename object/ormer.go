@@ -19,35 +19,65 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 
+	"github.com/beego/beego/v2/core/logs"
 	"github.com/beego/beego/v2/server/web"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
 	xormadapter "github.com/casdoor/xorm-adapter/v3"
+
 	_ "github.com/go-sql-driver/mysql"  // db = mysql
 	_ "github.com/lib/pq"               // db = postgres
 	_ "github.com/microsoft/go-mssqldb" // db = mssql
 	"github.com/xorm-io/xorm"
 	"github.com/xorm-io/xorm/core"
 	"github.com/xorm-io/xorm/names"
+
 	_ "modernc.org/sqlite" // db = sqlite
 )
 
 const (
-	defaultConfigPath     = "conf/app.conf"
-	defaultExportFilePath = "init_data_dump.json"
+	defaultConfigPath         = "conf/app.conf"
+	defaultConfigTemplatePath = "conf/app.conf.tmpl"
+	defaultExportFilePath     = "init_data_dump.json"
 )
 
 var (
-	ormer          *Ormer = nil
-	createDatabase        = true
-	configPath            = defaultConfigPath
-	exportData            = false
-	exportFilePath        = defaultExportFilePath
+	ormer          *Ormer
+	createDatabase = true
+	configPath     = defaultConfigPath
+	exportData     = false
+	exportFilePath = defaultExportFilePath
 )
+
+func loadConfigOrExit() {
+	err := web.LoadAppConfig("ini", configPath)
+	if err == nil {
+		return
+	}
+
+	logs.Error("Failed to load Casdoor config from %s: %v", configPath, err)
+	logs.Error("Casdoor will not overwrite the existing config file automatically.")
+	logs.Error("Please create or update your config file by referring to template: %s", defaultConfigTemplatePath)
+	os.Exit(1)
+}
+
+func getExpectedConfigPath() string {
+	if filepath.IsAbs(configPath) {
+		return configPath
+	}
+
+	dir, err := os.Getwd()
+	if err != nil {
+		return filepath.ToSlash(configPath)
+	}
+
+	return filepath.ToSlash(filepath.Join(dir, configPath))
+}
 
 func InitFlag() {
 	createDatabasePtr := flag.Bool("createDatabase", false, "true if you need to create database")
@@ -62,10 +92,7 @@ func InitFlag() {
 	exportFilePath = *exportFilePathPtr
 
 	// Load beego config from the specified config path
-	err := web.LoadAppConfig("ini", configPath)
-	if err != nil {
-		panic(fmt.Sprintf("failed to load config from %s: %v", configPath, err))
-	}
+	loadConfigOrExit()
 }
 
 func ShouldExportData() bool {
@@ -77,10 +104,8 @@ func GetExportFilePath() string {
 }
 
 func InitConfig() {
-	err := web.LoadAppConfig("ini", "../conf/app.conf")
-	if err != nil {
-		panic(err)
-	}
+	configPath = "../conf/app.conf"
+	loadConfigOrExit()
 
 	web.BConfig.WebConfig.Session.SessionOn = true
 
@@ -91,12 +116,8 @@ func InitConfig() {
 func InitAdapter() {
 	if conf.GetConfigString("driverName") == "" {
 		if !util.FileExist(configPath) {
-			dir, err := os.Getwd()
-			if err != nil {
-				panic(err)
-			}
-			dir = strings.ReplaceAll(dir, "\\", "/")
-			panic(fmt.Sprintf("The Casdoor config file: \"app.conf\" was not found, it should be placed at: \"%s/conf/app.conf\"", dir))
+			expectedPath := getExpectedConfigPath()
+			panic(fmt.Sprintf("The Casdoor config file: \"app.conf\" was not found or is invalid. Casdoor will not overwrite your config automatically. Please create or update it by referring to: \"%s\". Expected config path: \"%s\"", defaultConfigTemplatePath, expectedPath))
 		}
 	}
 
