@@ -46,6 +46,9 @@ const ApplicationListPage = React.lazy(() => import("@/pages/ApplicationListPage
 const ApplicationEditPage = React.lazy(() => import("@/pages/ApplicationEditPage"));
 const ProviderListPage = React.lazy(() => import("@/pages/ProviderListPage"));
 const ProviderEditPage = React.lazy(() => import("@/pages/ProviderEditPage"));
+const MarketplacePage = React.lazy(() => import("@/pages/MarketplacePage"));
+const IntegrationListPage = React.lazy(() => import("@/pages/IntegrationListPage"));
+const IntegrationEditPage = React.lazy(() => import("@/pages/IntegrationEditPage"));
 const ResourceListPage = React.lazy(() => import("@/pages/ResourceListPage"));
 const CertListPage = React.lazy(() => import("@/pages/CertListPage"));
 const CertEditPage = React.lazy(() => import("@/pages/CertEditPage"));
@@ -128,6 +131,7 @@ const ResultPage = React.lazy(() => import("@/pages/auth/ResultPage"));
 const ConsentPage = React.lazy(() => import("@/pages/auth/ConsentPage"));
 const PricingPage = React.lazy(() => import("@/pages/PricingPage"));
 const QrCodePage = React.lazy(() => import("@/pages/QrCodePage"));
+const ThemePreviewPage = React.lazy(() => import("@/pages/ThemePreviewPage"));
 const PromptPage = React.lazy(() => import("@/pages/auth/PromptPage"));
 const TelegramLogin = React.lazy(() => import("@/pages/auth/TelegramLogin"));
 const CasLogout = React.lazy(() => import("@/pages/auth/CasLogout"));
@@ -246,6 +250,7 @@ export default function App() {
         <Route path="/buy-plan/:owner/:pricingName" element={<ProductBuyPage />} />
         <Route path="/buy-plan/:owner/:pricingName/result" element={<PaymentResultPage />} />
         <Route path="/qrcode/:owner/:paymentName" element={<QrCodePage />} />
+        <Route path="/marketplace/theme-preview" element={<ThemePreviewPage />} />
 
         {/* Console */}
         <Route
@@ -280,6 +285,9 @@ export default function App() {
           <Route path="/applications/:organizationName/:applicationName" element={<ApplicationEditPage />} />
           <Route path="/providers" element={<ProviderListPage />} />
           <Route path="/providers/:organizationName/:providerName" element={<ProviderEditPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
+          <Route path="/integrations" element={<IntegrationListPage />} />
+          <Route path="/integrations/:organizationName/:integrationName" element={<IntegrationEditPage />} />
           <Route path="/resources" element={<ResourceListPage />} />
           <Route path="/certs" element={<CertListPage />} />
           <Route path="/certs/:organizationName/:certName" element={<CertEditPage />} />
