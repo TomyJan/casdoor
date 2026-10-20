@@ -180,10 +180,13 @@ func (idp *WeComIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) 
 		return nil, fmt.Errorf("wecomUserInfo.Errcode = %d, wecomUserInfo.Errmsg = %s", wecomUserInfo.Errcode, wecomUserInfo.Errmsg)
 	}
 
+	uid := wecomUserInfo.UserInfo.Userid
+	openUID := wecomUserInfo.UserInfo.OpenUserid
+	idStr := oauthStableID(uid, "", openUID, "", "")
 	userInfo := UserInfo{
-		Id:          wecomUserInfo.UserInfo.OpenUserid,
-		Username:    wecomUserInfo.UserInfo.Name,
-		DisplayName: wecomUserInfo.UserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", uid, "", openUID, ""),
+		DisplayName: displayNameFromNickname(wecomUserInfo.UserInfo.Name, "", "", "", idStr),
 		AvatarUrl:   wecomUserInfo.UserInfo.Avatar,
 	}
 
