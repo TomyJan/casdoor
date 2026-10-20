@@ -82,6 +82,7 @@ export function newApplication(account: Account) {
     ],
     signupItems: [
       {name: "ID", visible: false, required: true, rule: "Random"},
+      {name: "Logo", visible: true, required: false, rule: "None", customCss: SignupTableDefaultCssMap["Logo"]},
       {name: "Username", visible: true, required: true, rule: "None"},
       {name: "Display name", visible: true, required: true, rule: "None"},
       {name: "Password", visible: true, required: true, rule: "None"},
@@ -338,6 +339,7 @@ export function newPlan(account: Account) {
     currency: "USD",
     period: "Monthly",
     isEnabled: true,
+    autoRenew: false,
     paymentProviders: [],
     role: "",
     options: [],
@@ -493,6 +495,7 @@ export function newSubscription(account: Account) {
     group: "",
     plan: "",
     state: "Active",
+    autoRenew: false,
   };
 }
 

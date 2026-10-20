@@ -164,7 +164,7 @@ func fastAutoSignin(ctx *context.Context) (string, error) {
 	if strings.Contains(redirectUri, "?") {
 		sep = "&"
 	}
-	issuer := object.GetOidcDiscovery(ctx.Request.Host, "").Issuer
+	issuer := object.GetOidcIssuer(ctx.Request.Host)
 	res := fmt.Sprintf("%s%scode=%s&state=%s&iss=%s", redirectUri, sep, url.QueryEscape(code.Code), url.QueryEscape(state), url.QueryEscape(issuer))
 	return res, nil
 }
@@ -343,6 +343,7 @@ func serveFileWithReplace(w http.ResponseWriter, r *http.Request, name string, o
 	// do not mis-detect the page language (e.g. Chrome offering to translate a
 	// Chinese page into Chinese because the static shell declares lang="en").
 	if strings.HasSuffix(name, "index.html") {
+		w.Header().Set("Cache-Control", "no-cache")
 		lang := getIndexHtmlLanguage(r)
 		newContent = strings.ReplaceAll(newContent, `<html lang="en">`, fmt.Sprintf(`<html lang="%s">`, lang))
 		var cdnEnabled bool
@@ -354,6 +355,7 @@ func serveFileWithReplace(w http.ResponseWriter, r *http.Request, name string, o
 		}
 		newContent = addBasePathToHtml(newContent)
 		newContent = addWebConfigToHtml(newContent)
+		newContent = addIssuerToHtml(newContent, r.Host)
 	}
 
 	newContent = strings.ReplaceAll(newContent, oldStaticBaseUrl, newStaticBaseUrl)
@@ -370,6 +372,12 @@ func addWebConfigToHtml(content string) string {
 	}
 
 	meta := fmt.Sprintf(`<meta name="casdoor-web-config" content="%s">`, html.EscapeString(string(webConfig)))
+	return strings.Replace(content, "</head>", meta+"</head>", 1)
+}
+
+// addIssuerToHtml tells the frontend the issuer it has to send back as `iss` in authorization responses (RFC 9207)
+func addIssuerToHtml(content string, host string) string {
+	meta := fmt.Sprintf(`<meta name="casdoor-issuer" content="%s">`, html.EscapeString(object.GetOidcIssuer(host)))
 	return strings.Replace(content, "</head>", meta+"</head>", 1)
 }
 

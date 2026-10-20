@@ -131,7 +131,7 @@ type Application struct {
 	DisableSamlAttributes        bool            `json:"disableSamlAttributes"`
 	EnableSamlAssertionSignature bool            `json:"enableSamlAssertionSignature"`
 	UseEmailAsSamlNameId         bool            `json:"useEmailAsSamlNameId"`
-	SamlNameIdTemplate           string          `xorm:"varchar(500)" json:"samlNameIdTemplate"`
+	SamlNameIdTemplate           string          `xorm:"mediumtext" json:"samlNameIdTemplate"`
 	EnableWebAuthn               bool            `json:"enableWebAuthn"`
 	EnableLinkWithEmail          bool            `json:"enableLinkWithEmail"`
 	OrgChoiceMode                string          `json:"orgChoiceMode"`
@@ -533,6 +533,13 @@ func AddApplication(application *Application, lang string) (bool, error) {
 
 		application.TokenFields = tokenFields
 	}
+	if application.ExpireInHours == 0 {
+		expireInHours, refreshExpireInHours, _ := getDcrTokenLifetimes(nil)
+		application.ExpireInHours = expireInHours
+		if application.RefreshExpireInHours == 0 {
+			application.RefreshExpireInHours = refreshExpireInHours
+		}
+	}
 
 	app, err := GetApplicationByClientId(application.ClientId)
 	if err != nil {
@@ -540,7 +547,7 @@ func AddApplication(application *Application, lang string) (bool, error) {
 	}
 
 	if app != nil {
-		return false, nil
+		return false, fmt.Errorf(i18n.Translate(lang, "general:The client ID: %s is already used by another application"), application.ClientId)
 	}
 
 	if application.IsShared == true && application.Organization != "built-in" {

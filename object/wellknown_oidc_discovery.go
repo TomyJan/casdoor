@@ -17,6 +17,7 @@ package object
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -37,6 +38,7 @@ type OidcDiscovery struct {
 	RegistrationEndpoint                       string   `json:"registration_endpoint,omitempty"`
 	JwksUri                                    string   `json:"jwks_uri"`
 	IntrospectionEndpoint                      string   `json:"introspection_endpoint"`
+	RevocationEndpoint                         string   `json:"revocation_endpoint"`
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	ResponseModesSupported                     []string `json:"response_modes_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
@@ -54,6 +56,11 @@ type OidcDiscovery struct {
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"` // RFC 9207
 	ClientIdMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported"`          // draft-ietf-oauth-client-id-metadata-document
 }
+
+var (
+	ErrWebFingerInvalidResource = errors.New("invalid resource")
+	ErrWebFingerUserNotFound    = errors.New("user not found")
+)
 
 type WebFinger struct {
 	Subject    string             `json:"subject"`
@@ -118,6 +125,11 @@ func getOriginFromHost(host string) (string, string) {
 	return originF, originB
 }
 
+func GetOidcIssuer(host string) string {
+	_, originBackend := getOriginFromHost(host)
+	return originBackend
+}
+
 func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 	originFrontend, originBackend := getOriginFromHost(host)
 
@@ -180,9 +192,10 @@ func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 		RegistrationEndpoint:                       registrationEndpoint,
 		JwksUri:                                    jwksUri,
 		IntrospectionEndpoint:                      fmt.Sprintf("%s/api/login/oauth/introspect", originBackend),
+		RevocationEndpoint:                         fmt.Sprintf("%s/api/login/oauth/revoke", originBackend),
 		ResponseTypesSupported:                     []string{"code", "token", "id_token", "code token", "code id_token", "token id_token", "code token id_token"},
 		ResponseModesSupported:                     []string{"query", "fragment", "form_post"},
-		GrantTypesSupported:                        []string{"authorization_code", "implicit", "password", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:token-exchange", VerificationCodeGrantType},
+		GrantTypesSupported:                        []string{"authorization_code", "implicit", "password", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:token-exchange", VerificationCodeGrantType, MobileOneClickGrantType},
 		SubjectTypesSupported:                      []string{"public"},
 		IdTokenSigningAlgValuesSupported:           []string{"RS256", "RS512", "ES256", "ES384", "ES512"},
 		ScopesSupported:                            scopes,
@@ -269,7 +282,7 @@ func GetWebFinger(resource string, rels []string, host string, applicationName s
 	resourceSplit := strings.Split(resource, ":")
 
 	if len(resourceSplit) != 2 {
-		return wf, fmt.Errorf("invalid resource")
+		return wf, ErrWebFingerInvalidResource
 	}
 
 	resourceType := resourceSplit[0]
@@ -285,7 +298,7 @@ func GetWebFinger(resource string, rels []string, host string, applicationName s
 		}
 
 		if user == nil {
-			return wf, fmt.Errorf("user not found")
+			return wf, ErrWebFingerUserNotFound
 		}
 
 		wf.Subject = resource

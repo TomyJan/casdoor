@@ -306,6 +306,7 @@ func InitAPI() {
 	web.Router("/api/get-subscriptions", &controllers.ApiController{}, "GET:GetSubscriptions")
 	web.Router("/api/get-subscription", &controllers.ApiController{}, "GET:GetSubscription")
 	web.Router("/api/update-subscription", &controllers.ApiController{}, "POST:UpdateSubscription")
+	web.Router("/api/set-subscription-auto-renew", &controllers.ApiController{}, "POST:SetSubscriptionAutoRenew")
 	web.Router("/api/add-subscription", &controllers.ApiController{}, "POST:AddSubscription")
 	web.Router("/api/delete-subscription", &controllers.ApiController{}, "POST:DeleteSubscription")
 
@@ -317,6 +318,10 @@ func InitAPI() {
 
 	web.Router("/api/get-system-info", &controllers.ApiController{}, "GET:GetSystemInfo")
 	web.Router("/api/get-version-info", &controllers.ApiController{}, "GET:GetVersionInfo")
+	web.Router("/api/get-upgrade-info", &controllers.ApiController{}, "GET:GetUpgradeInfo")
+	web.Router("/api/upgrade-system", &controllers.ApiController{}, "POST:UpgradeSystem")
+	web.Router("/api/get-setting", &controllers.ApiController{}, "GET:GetSetting")
+	web.Router("/api/update-setting", &controllers.ApiController{}, "POST:UpdateSetting")
 	web.Router("/api/health", &controllers.ApiController{}, "GET:Health")
 	web.Router("/api/get-prometheus-info", &controllers.ApiController{}, "GET:GetPrometheusInfo")
 	web.Router("/api/metrics", &controllers.ApiController{}, "GET:GetMetrics")
@@ -378,6 +383,7 @@ func InitAPI() {
 	web.Router("/api/login/oauth/access_token", &controllers.ApiController{}, "POST:GetOAuthToken")
 	web.Router("/api/login/oauth/refresh_token", &controllers.ApiController{}, "POST:RefreshToken")
 	web.Router("/api/login/oauth/introspect", &controllers.ApiController{}, "POST:IntrospectToken")
+	web.Router("/api/login/oauth/revoke", &controllers.ApiController{}, "POST:RevokeToken")
 	web.Router("/api/oauth/register", &controllers.ApiController{}, "POST:DynamicClientRegister")
 	web.Router("/api/oauth/register/:clientId", &controllers.ApiController{}, "GET:DynamicClientRead;PUT:DynamicClientUpdate;DELETE:DynamicClientDelete")
 

@@ -56,6 +56,7 @@ func main() {
 	object.CreateTables()
 
 	object.InitDb()
+	object.InitSetting()
 
 	// Handle export command
 	if object.ShouldExportData() {
@@ -81,6 +82,7 @@ func main() {
 	object.InitCleanupCasTickets()
 	object.InitSamlAssertionStore()
 	object.InitExpirePermissions()
+	object.InitUpdateSubscriptionStates()
 
 	object.InitSiteMap()
 	if len(object.SiteMap) != 0 {

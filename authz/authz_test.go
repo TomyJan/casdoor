@@ -24,6 +24,8 @@ func TestDefaultAndObsoleteApiRules(t *testing.T) {
 		{"*", "*", "POST", "/api/userinfo", "*", "*"},
 		{"*", "*", "GET", "/api/get-init-admin-status", "*", "*"},
 		{"*", "*", "POST", "/api/init-admin-password", "*", "*"},
+		{"*", "*", "GET", "/api/get-subscriptions", "*", "*"},
+		{"*", "*", "POST", "/api/set-subscription-auto-renew", "*", "*"},
 	}
 	for _, rule := range newRules {
 		if !containsRule(defaultApiRules, rule) {
