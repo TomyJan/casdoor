@@ -21,7 +21,7 @@ import {SearchableSelect} from "@/components/common/SearchableSelect";
 import {EditPageShell} from "@/components/crud/EditPageShell";
 import {EditableTable} from "@/components/crud/EditableTable";
 import {MapTable} from "@/components/crud/MapTable";
-import {FormRow, formGridClass} from "@/components/crud/FormRow";
+import {formGridClass} from "@/components/crud/FormRow";
 import {AffiliationAddressSelect, AffiliationField, useAffiliation} from "@/components/user/AffiliationSelect";
 import {CartTable} from "@/components/user/CartTable";
 import {CasdoorAppQrCode, CasdoorAppUrl, CasdoorAuthenticatorLink} from "@/components/user/CasdoorAppConnector";
@@ -152,6 +152,11 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
 
   const isAdmin = Setting.isLocalAdminUser(account);
   const isSelf = account?.owner === user.owner && account?.name === user.name;
+  // only offer the methods in the MFA items, an enabled one stays so it can still be edited or disabled
+  const allowedMfaTypes = Setting.getAllowedMfaTypes(user, organization);
+  const visibleMfaItems = mfaItems.filter(
+    (item: any) => item.enabled || allowedMfaTypes.length === 0 || allowedMfaTypes.includes(item.mfaType),
+  );
 
   const save = async(exitAfterSave: boolean) => {
     const isAdd = mode === "add";
@@ -247,6 +252,12 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
   const isSelfOrAdmin = isSelf || isAdmin;
 
   const avatarUrl = Setting.getEffectiveAvatarUrl(user);
+
+  const extraInputs: Record<string, React.ReactNode> = {
+    "Deleted time": <Input value={Setting.getFormattedDate(user.deletedTime) ?? ""} disabled />,
+    "Last signin time": <Input value={Setting.getFormattedDate(user.lastSigninTime) ?? ""} disabled />,
+    "Last signin IP": <Input value={user.lastSigninIp ?? ""} disabled />,
+  };
 
   const rows: Record<string, React.ReactNode> = {
     "Organization": (
@@ -957,16 +968,31 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
         <Input value={Setting.getFormattedDate(user.lastChangePasswordTime) ?? ""} disabled />
       </AccountItemRow>
     ),
+    "Deleted time": (
+      <AccountItemRow name="Deleted time" labelKey="user:Deleted time">
+        {extraInputs["Deleted time"]}
+      </AccountItemRow>
+    ),
+    "Last signin time": (
+      <AccountItemRow name="Last signin time" labelKey="user:Last signin time">
+        {extraInputs["Last signin time"]}
+      </AccountItemRow>
+    ),
+    "Last signin IP": (
+      <AccountItemRow name="Last signin IP" labelKey="user:Last signin IP">
+        {extraInputs["Last signin IP"]}
+      </AccountItemRow>
+    ),
     "Multi-factor authentication": (
       <AccountItemRow name="Multi-factor authentication" labelKey="mfa:Multi-factor authentication" block>
         <div className="space-y-2">
           <div className="divide-y rounded-lg border">
-            {mfaItems.length === 0 ? (
+            {visibleMfaItems.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 {i18next.t("general:No data")}
               </div>
             ) : (
-              mfaItems.map((item: any) => (
+              visibleMfaItems.map((item: any) => (
                 <div key={item.mfaType} className="flex flex-wrap items-center gap-2 p-3">
                   <span className="text-sm font-medium">{item.mfaType}</span>
                   {item.secret ? (
@@ -1121,20 +1147,15 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
     ),
   };
 
-  // rows this frontend adds on top of the antd list; no account item governs them
-  const extraRows = (
-    <>
-      <FormRow block labelKey="user:Deleted time">
-        <Input value={Setting.getFormattedDate(user.deletedTime) ?? ""} disabled />
-      </FormRow>
-      <FormRow block labelKey="user:Last signin time">
-        <Input value={Setting.getFormattedDate(user.lastSigninTime) ?? ""} disabled />
-      </FormRow>
-      <FormRow block labelKey="user:Last signin IP">
-        <Input value={user.lastSigninIp ?? ""} disabled />
-      </FormRow>
-    </>
-  );
+  // organizations whose account items predate these rows still see them, in the first tab
+  const configuredItemNames = new Set(((userOrganization?.accountItems ?? []) as any[]).map((item) => item.name));
+  const extraRows = Object.entries(extraInputs)
+    .filter(([name]) => !configuredItemNames.has(name))
+    .map(([name, input]) => (
+      <AccountItemRow key={name} labelKey={`user:${name}`}>
+        {input}
+      </AccountItemRow>
+    ));
 
   // `organization.accountItems` decides which rows appear, in which order and
   // under which tab, exactly as getUniqueTabs()/getAccountItemsByTab() do in
@@ -1192,7 +1213,6 @@ export default function UserEditPage({self}: {self?: boolean} = {}) {
           // showing every row beats showing an empty form
           <div className={formGridClass}>
             {Object.entries(rows).map(([name, row]) => <React.Fragment key={name}>{row}</React.Fragment>)}
-            {extraRows}
           </div>
         ) : tabNames.length <= 1 ? (
           <div className={formGridClass}>

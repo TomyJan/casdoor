@@ -786,6 +786,9 @@ export const GetTranslatedUserItems = () => {
     {name: "Multi-factor authentication", label: i18next.t("mfa:Multi-factor authentication")},
     {name: "WebAuthn credentials", label: i18next.t("user:WebAuthn credentials")},
     {name: "Last change password time", label: i18next.t("user:Last change password time")},
+    {name: "Deleted time", label: i18next.t("user:Deleted time")},
+    {name: "Last signin time", label: i18next.t("user:Last signin time")},
+    {name: "Last signin IP", label: i18next.t("user:Last signin IP")},
     {name: "Managed accounts", label: i18next.t("user:Managed accounts")},
     {name: "Face ID", label: i18next.t("login:Face ID")},
     {name: "MFA accounts", label: i18next.t("user:MFA accounts")},
@@ -1152,6 +1155,15 @@ export function isRequiredEnableMfa(user, organization) {
     return false;
   }
   return getMfaItemsByRules(user, organization, [MfaRuleRequired]).length > 0;
+}
+
+/** The MFA types the user may set up: the user's own MFA items, else the organization's. An empty list allows all types. */
+export function getAllowedMfaTypes(user, organization): string[] {
+  let mfaItems = organization?.mfaItems ?? [];
+  if (user?.mfaItems && user.mfaItems.length !== 0) {
+    mfaItems = user.mfaItems;
+  }
+  return (mfaItems ?? []).map((mfaItem) => mfaItem.name);
 }
 
 export function getMfaItemsByRules(user, organization, mfaRules = []) {
