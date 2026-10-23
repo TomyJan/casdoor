@@ -34,6 +34,14 @@ import (
 )
 
 func main() {
+	if util.RunAsService(runServer) {
+		return
+	}
+
+	runServer()
+}
+
+func runServer() {
 	web.BConfig.WebConfig.Session.SessionOn = true
 	web.BConfig.WebConfig.Session.SessionName = "casdoor_session_id"
 	if redisConfig := conf.GetRedisConfig(); redisConfig == nil {
