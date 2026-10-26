@@ -163,8 +163,9 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		return nil, fmt.Errorf("not an internal user")
 	}
 
+	idStr := oauthStableID(userResp.UserId, "", "", "", userResp.UserEmail)
 	userInfo := UserInfo{
-		Id: userResp.UserId,
+		Id: idStr,
 	}
 
 	// snsapi_privateinfo scope returns user_ticket, use getuserdetail for full private info
@@ -174,7 +175,8 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		resp, err = idp.Client.Post(
 			fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/user/getuserdetail?access_token=%s", accessToken),
 			"application/json;charset=UTF-8",
-			bytes.NewReader(bs))
+			bytes.NewReader(bs),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -190,8 +192,8 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		if detailResp.Errcode != 0 {
 			return nil, fmt.Errorf("getuserdetail.Errcode = %d, getuserdetail.Errmsg = %s", detailResp.Errcode, detailResp.Errmsg)
 		}
-		userInfo.Username = detailResp.Name
-		userInfo.DisplayName = detailResp.Name
+		userInfo.Username = oauthUsernamePreferLogin("", detailResp.UserId, "", "", detailResp.Email)
+		userInfo.DisplayName = displayNameFromNickname(detailResp.Name, "", "", detailResp.Email, idStr)
 		userInfo.Email = detailResp.Email
 		userInfo.AvatarUrl = detailResp.Avatar
 	} else {
@@ -213,8 +215,8 @@ func (idp *WeComInternalIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo,
 		if infoResp.Errcode != 0 {
 			return nil, fmt.Errorf("userInfoResp.errcode = %d, userInfoResp.errmsg = %s", infoResp.Errcode, infoResp.Errmsg)
 		}
-		userInfo.Username = infoResp.Name
-		userInfo.DisplayName = infoResp.Name
+		userInfo.Username = oauthUsernamePreferLogin("", infoResp.UserId, "", "", infoResp.Email)
+		userInfo.DisplayName = displayNameFromNickname(infoResp.Name, "", "", infoResp.Email, idStr)
 		userInfo.Email = infoResp.Email
 		userInfo.AvatarUrl = infoResp.Avatar
 	}
