@@ -19,11 +19,14 @@ import {FaceRecognitionCommonModal} from "@/components/common/FaceRecognitionCom
 import {FaceRecognitionModal} from "@/components/common/FaceRecognitionModal";
 import {ProviderButtons, getVisibleProviders} from "@/components/auth/ProviderButtons";
 import {WeChatLoginPanel} from "@/components/auth/WeChatLoginPanel";
+import {QrCornerSwitch, WeChatQrConnectPanel} from "@/components/auth/WeChatQrConnectPanel";
+import {needsWeChatQrDialog} from "@/components/auth/WeChatQrDialog";
 import {OrganizationSelect} from "@/components/common/OrganizationSelect";
 import {RedirectForm} from "@/components/auth/RedirectForm";
 import {CountryCodeSelect} from "@/components/common/CountryCodeSelect";
 import {PasswordInput} from "@/components/common/PasswordInput";
-import {SendCodeInput, type CaptchaValues} from "@/components/auth/SendCodeInput";
+import {useSendCode, type CaptchaValues} from "@/components/auth/SendCodeInput";
+import {CodeInput, VerificationCodeLength} from "@/components/auth/CodeInput";
 import {CaptchaModal, type CaptchaHandle} from "@/components/common/CaptchaModal";
 import {getCaptchaProvider} from "@/lib/captcha";
 import {useAccount} from "@/hooks/use-account";
@@ -67,6 +70,11 @@ function getDefaultLoginMethod(application: any): LoginMethod {
   case "Device login":
     if (first?.rule === "Tab") {
       return "device";
+    }
+    break;
+  case "WeChat":
+    if (first?.rule === "Tab" || first?.rule === "None") {
+      return "wechat";
     }
     break;
   }
@@ -170,6 +178,15 @@ function getUsernameLabel(method: LoginMethod | undefined) {
   default:
     return i18next.t("login:username, Email or phone");
   }
+}
+
+/** The backend's answer to a verification-code sign-in of an email or phone that has no account yet. */
+const NextSignup = "NextSignup";
+
+/** A phone number typed without a country code belongs to the organization's only country, if it has just one. */
+function getOnlyCountryCode(application: any): string {
+  const countryCodes = application?.organizationObj?.countryCodes ?? [];
+  return countryCodes.length === 1 ? countryCodes[0] : "";
 }
 
 /** Which of the three verification-code methods the "Verification code" tab stands for. */
@@ -295,6 +312,8 @@ export default function LoginPage({type = "login", application: applicationProp,
   const [countryCode, setCountryCode] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
+  // the verification-code method asks for the address first, and for the code only once it has been sent there
+  const [codeSentTo, setCodeSentTo] = React.useState("");
   const [signinErrors, setSigninErrors] = React.useState<Record<string, string>>({});
   const [autoSignin, setAutoSignin] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
@@ -302,6 +321,7 @@ export default function LoginPage({type = "login", application: applicationProp,
   const [captchaVisible, setCaptchaVisible] = React.useState(false);
   const [pendingValues, setPendingValues] = React.useState<any>(null);
   const [agreed, setAgreed] = React.useState(true);
+  const [wechatQrShown, setWechatQrShown] = React.useState(false);
   const [faceValues, setFaceValues] = React.useState<any>(null);
   const [captchaValues, setCaptchaValues] = React.useState<CaptchaValues | undefined>(undefined);
   const captchaRef = React.useRef<CaptchaHandle | null>(null);
@@ -696,7 +716,7 @@ export default function LoginPage({type = "login", application: applicationProp,
       if (loginMethod !== "webAuthn") {
         found.username = getUsernameRequiredMessage(loginMethod);
       }
-    } else if (loginMethod === "verificationCode" && !Setting.isValidEmail(value) && !Setting.isValidPhone(value)) {
+    } else if (loginMethod === "verificationCode" && !Setting.isValidEmail(value) && !Setting.isValidPhone(value, getOnlyCountryCode(application))) {
       found.username = i18next.t("login:The input is not valid Email or phone number!");
     } else if ((loginMethod === "verificationCodeEmail" || loginMethod === "magicLink") && !Setting.isValidEmail(value)) {
       found.username = i18next.t("login:The input is not valid Email!");
@@ -705,7 +725,7 @@ export default function LoginPage({type = "login", application: applicationProp,
     if ((loginMethod === "password" || loginMethod === "ldap") && password === "") {
       found.password = i18next.t("login:Please input your password!");
     }
-    if (isCodeMethod && code === "") {
+    if (isCodeMethod && codeSentTo !== "" && code.length < VerificationCodeLength) {
       found.code = i18next.t("login:Please input your code!");
     }
     return found;
@@ -837,7 +857,9 @@ export default function LoginPage({type = "login", application: applicationProp,
     const oAuthParams = Util.getOAuthGetParameters();
     AuthBackend.login(values, oAuthParams)
       .then((res: any) => {
-        if (res.status === "ok") {
+        if (res.status === "ok" && res.data === NextSignup) {
+          goToCodeSignup(res.data2, values.code);
+        } else if (res.status === "ok") {
           checkMfa(res, values, oAuthParams, (ok) => handleLoginResult(ok, values, oAuthParams));
         } else {
           Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
@@ -848,6 +870,19 @@ export default function LoginPage({type = "login", application: applicationProp,
         localStorage.setItem("lastLoginOrg", values?.organization || "");
         setLoading(false);
       });
+  };
+
+  /**
+   * The code proved an email or phone that has no account: the signup page takes it as
+   * verified, with the same code, and asks for the rest of the application's signup items.
+   */
+  const goToCodeSignup = (address: any, code: string) => {
+    const signupUrl = Setting.getSignupLink(application);
+    if (!signupUrl?.startsWith("/")) {
+      return;
+    }
+    Setting.storeSigninUrl();
+    navigate(signupUrl, {state: {verifiedAddress: {...address, code}}});
   };
 
   /** the user rejected this device-code sign-in from the approval page */
@@ -913,6 +948,10 @@ export default function LoginPage({type = "login", application: applicationProp,
       return;
     }
     if (!checkAgreement()) {
+      return;
+    }
+    if (isCodeMethod && codeSentTo === "") {
+      codeSender.request();
       return;
     }
     const values = buildValues();
@@ -1124,6 +1163,38 @@ export default function LoginPage({type = "login", application: applicationProp,
     Setting.goToLink(singleProviderAuthUrl);
   }, [singleProviderAuthUrl]);
 
+  const codeDest = username.trim();
+  const codeSender = useSendCode({
+    method: "login",
+    destType: loginMethod === "verificationCodeEmail" || (loginMethod !== "verificationCodePhone" && codeDest.includes("@")) ? "email" : "phone",
+    dest: codeDest,
+    countryCode: loginMethod === "verificationCodePhone" ? countryCode : "",
+    applicationId: application ? Setting.getApplicationName(application) : "",
+    application: application ?? undefined,
+    useInlineCaptcha: application ? Setting.isInlineCaptchaEnabled(application) : false,
+    captchaValue: captchaValues,
+    refreshCaptcha: refreshInlineCaptcha,
+    onSent: () => {
+      setCodeSentTo(codeDest);
+      setCode("");
+    },
+  });
+
+  // another tab starts over from the address
+  React.useEffect(() => {
+    setCodeSentTo("");
+    setCode("");
+  }, [loginMethod]);
+
+  // an organization that offers a single language forces it rather than offering a choice, as the signup page does
+  const orgLanguages = application?.organizationObj?.languages as string[] | undefined;
+  const forcedLanguage = orgLanguages?.length === 1 && Setting.isSigninItemVisible(application, "Languages") ? orgLanguages[0] : "";
+  React.useEffect(() => {
+    if (forcedLanguage !== "" && Setting.getLanguage() !== forcedLanguage) {
+      Setting.setLanguage(forcedLanguage);
+    }
+  }, [forcedLanguage]);
+
   if (saml !== null) {
     return <RedirectForm samlResponse={saml.response} redirectUrl={saml.redirectUrl} relayState={saml.relayState} />;
   }
@@ -1256,6 +1327,12 @@ export default function LoginPage({type = "login", application: applicationProp,
   const wechatOnLoginPage = (application.signinMethods ?? []).some(
     (item: any) => item.name === "WeChat" && item.rule === "Login page",
   );
+  // or behind the panel's corner, from the open platform website app; a phone cannot scan its own screen
+  const wechatCornerItem = (application.signinMethods ?? []).some((item: any) => item.name === "WeChat" && item.rule === "Corner") &&
+    !navigator.userAgent.includes("MicroMessenger") && !window.matchMedia("(hover: none) and (pointer: coarse)").matches
+    ? getVisibleProviders(application, "signin").find((item: any) => item.provider?.type === "WeChat" && !needsWeChatQrDialog(item.provider))
+    : undefined;
+  const showWechatQr = wechatQrShown && !!wechatCornerItem;
   // without any credential method there is no form, only the providers
   const showForm = passwordEnabled || codeEnabled || webAuthnEnabled || ldapEnabled || faceIdEnabled || magicLinkEnabled;
 
@@ -1295,38 +1372,41 @@ export default function LoginPage({type = "login", application: applicationProp,
    * "Text N" ones carry raw HTML instead of a widget.
    */
   /**
-   * The verification-code field. The application may place it as its own signin
-   * item; when it does not, the antd page renders it in the password slot, so a
-   * code-based sign-in still has somewhere to type the code.
+   * The verification-code field, shown once the code has been sent. The application
+   * may place it as its own signin item; when it does not, the antd page renders it
+   * in the password slot, so a code-based sign-in still has somewhere to type the code.
    */
   const renderCodeInput = (item: any) => (
     <div key={item.name} className="verification-code space-y-2">
-      <Label>{item.label || i18next.t("login:Verification code")}</Label>
-      <SendCodeInput
+      <Label htmlFor="code">{item.label || i18next.t("login:Verification code")}</Label>
+      <CodeInput
+        id="code"
         className="verification-code-input"
+        autoFocus
         value={code}
-        onChange={(v) => {
-          setCode(v);
+        onChange={(value) => {
+          setCode(value);
           clearError("code");
         }}
-        method="login"
-        destType={loginMethod === "verificationCodeEmail" || (!isPhoneCodeMethod && username.includes("@")) ? "email" : "phone"}
-        dest={username}
-        // the antd page only enabled the button once the identifier parsed
-        disabled={isPhoneCodeMethod
-          ? !Setting.isValidPhone(username, countryCode)
-          : loginMethod === "verificationCodeEmail"
-            ? !Setting.isValidEmail(username)
-            : !Setting.isValidEmail(username) && !Setting.isValidPhone(username)}
-        countryCode={isPhoneCodeMethod ? countryCode : ""}
-        placeholder={item.placeholder}
-        application={application}
-        applicationId={Setting.getApplicationName(application)}
-        useInlineCaptcha={Setting.isInlineCaptchaEnabled(application)}
-        captchaValue={captchaValues}
-        refreshCaptcha={refreshInlineCaptcha}
+        // the last digit signs in by itself, as Enter would
+        onComplete={() => {
+          if (!loading) {
+            submit();
+          }
+        }}
       />
       {fieldError("code")}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="link"
+          className="verification-code-resend h-auto p-0 text-muted-foreground"
+          disabled={codeSender.seconds > 0 || codeSender.sending}
+          onClick={codeSender.request}
+        >
+          {codeSender.seconds > 0 ? `${i18next.t("login:Resend code")} (${codeSender.seconds}s)` : i18next.t("login:Resend code")}
+        </Button>
+      </div>
     </div>
   );
 
@@ -1369,6 +1449,28 @@ export default function LoginPage({type = "login", application: applicationProp,
       }
       if (loginMethod === "device") {
         return <DeviceLoginPanel key={key} application={application} onSuccess={completeDeviceLogin} />;
+      }
+      if (isCodeMethod && codeSentTo !== "") {
+        return (
+          <div key={key} className="login-code-sent flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+            <div className="min-w-0">
+              <div className="text-muted-foreground">{i18next.t("login:Code sent to")}</div>
+              <div className="truncate font-medium">{codeSentTo}</div>
+            </div>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto shrink-0 p-0"
+              onClick={() => {
+                setCodeSentTo("");
+                setCode("");
+                codeSender.resetCountdown();
+              }}
+            >
+              {i18next.t("login:Change")}
+            </Button>
+          </div>
+        );
       }
       if (isPhoneCodeMethod) {
         return (
@@ -1422,7 +1524,7 @@ export default function LoginPage({type = "login", application: applicationProp,
         </div>
       );
     case "Verification code":
-      if (isPanelMethod || !isCodeMethod) {
+      if (isPanelMethod || !isCodeMethod || codeSentTo === "") {
         return null;
       }
       return renderCodeInput(item);
@@ -1431,7 +1533,7 @@ export default function LoginPage({type = "login", application: applicationProp,
         return null;
       }
       if (isCodeMethod) {
-        return hasCodeSigninItem ? null : renderCodeInput(item);
+        return hasCodeSigninItem || codeSentTo === "" ? null : renderCodeInput(item);
       }
       return (
         <div key={key} className="login-password space-y-2">
@@ -1451,7 +1553,7 @@ export default function LoginPage({type = "login", application: applicationProp,
         </div>
       );
     case "Forgot password?":
-      if (loginMethod === "magicLink") {
+      if (loginMethod === "magicLink" || (isCodeMethod && codeSentTo === "")) {
         return null;
       }
       // the item's default CSS pins this row at 320px, wider than some panels
@@ -1467,7 +1569,8 @@ export default function LoginPage({type = "login", application: applicationProp,
         </div>
       );
     case "Agreement":
-      return isSigninAgreementShown(application) ? (
+      // the agreement was accepted when the code was asked for
+      return isSigninAgreementShown(application) && !(isCodeMethod && codeSentTo !== "") ? (
         <AgreementCheckbox key={key} application={application} checked={agreed} onChange={setAgreed} />
       ) : null;
     case "Captcha":
@@ -1493,16 +1596,18 @@ export default function LoginPage({type = "login", application: applicationProp,
       }
       return (
         <div key={key} className="login-button-box space-y-3">
-          <Button type="submit" className="login-button w-full" loading={loading}>
-            {loginMethod === "webAuthn"
-              ? i18next.t("login:Sign in with WebAuthn")
-              : loginMethod === "faceId"
-                ? i18next.t("login:Sign in with Face ID")
-                : loginMethod === "magicLink"
-                  ? i18next.t("login:Send sign-in link")
-                  : type === "device"
-                    ? i18next.t("login:Approve and sign in")
-                    : item.label || i18next.t("login:Sign In")}
+          <Button type="submit" className="login-button w-full" loading={loading || (isCodeMethod && codeSender.sending)}>
+            {isCodeMethod && codeSentTo === ""
+              ? i18next.t("code:Get Code")
+              : loginMethod === "webAuthn"
+                ? i18next.t("login:Sign in with WebAuthn")
+                : loginMethod === "faceId"
+                  ? i18next.t("login:Sign in with Face ID")
+                  : loginMethod === "magicLink"
+                    ? i18next.t("login:Send sign-in link")
+                    : type === "device"
+                      ? i18next.t("login:Approve and sign in")
+                      : item.label || i18next.t("login:Sign In")}
           </Button>
           {type === "device" ? (
             <Button type="button" variant="outline" className="w-full" onClick={cancelDeviceLogin}>
@@ -1541,6 +1646,13 @@ export default function LoginPage({type = "login", application: applicationProp,
             method="signin"
             rule={Setting.getProvidersRule(application, item)}
             onBeforeClick={checkAgreement}
+            onProvider={(providerItem) => {
+              if (providerItem.provider?.name !== wechatCornerItem?.provider?.name) {
+                return false;
+              }
+              setWechatQrShown(true);
+              return true;
+            }}
           />
         </div>
       );
@@ -1554,9 +1666,12 @@ export default function LoginPage({type = "login", application: applicationProp,
       preview={preview === "theme" ? "theme" : !!preview}
       application={application}
       hideLogo={!isVisible("Logo")}
-      hideLanguages={!isVisible("Languages")}
+      hideLanguages={!isVisible("Languages") || forcedLanguage !== ""}
+      corner={wechatCornerItem ? <QrCornerSwitch showingQr={showWechatQr} onClick={() => setWechatQrShown(!showWechatQr)} /> : null}
     >
-      <div className="space-y-6">
+      {showWechatQr ? <WeChatQrConnectPanel application={application} provider={wechatCornerItem.provider} /> : null}
+      {/* hidden rather than unmounted, so what the visitor typed is still there on the way back */}
+      <div className="space-y-6" hidden={showWechatQr}>
         {/* each item styles itself; a "Text N" item holds HTML, not CSS */}
         {signinItems.map((item: any) =>
           Setting.isCustomFormItem(item) ? null : <CustomStyle key={`css-${item.name}`} css={item.customCss} />,
@@ -1601,6 +1716,7 @@ export default function LoginPage({type = "login", application: applicationProp,
         {showForm ? (
           <form className="space-y-4" onSubmit={submit}>
             {signinItems.map(renderSigninItem)}
+            {isCodeMethod ? codeSender.captchaModal : null}
           </form>
         ) : !Setting.hasAnySigninMethod(application) ? (
           <div className="space-y-4">
@@ -1631,10 +1747,7 @@ export default function LoginPage({type = "login", application: applicationProp,
         {wechatOnLoginPage ? (
           <div className="space-y-4">
             <AuthDivider />
-            <p className="text-center text-sm text-muted-foreground">
-              {i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}
-            </p>
-            <WeChatLoginPanel application={application} />
+            <WeChatLoginPanel application={application} showHint />
           </div>
         ) : null}
 

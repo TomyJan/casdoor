@@ -16,7 +16,7 @@ import {
   useCustomHead,
 } from "@/hooks/use-application-chrome";
 import {useIsMobile} from "@/hooks/use-mobile";
-import {useIsDark} from "@/hooks/use-theme";
+import {useForcedTheme, useIsDark} from "@/hooks/use-theme";
 import * as Setting from "@/lib/setting";
 import {useShowcaseApplication, useShowcaseBundle} from "@/lib/theme-showcase";
 import {cn} from "@/lib/utils";
@@ -38,6 +38,8 @@ interface AuthLayoutProps {
   onBack?: () => void;
   /** rendered under the panel, outside it: the "no account? sign up" line */
   footer?: React.ReactNode;
+  /** pinned to the panel's top right corner: the switch to the QR code */
+  corner?: React.ReactNode;
   /**
    * Rendered inside the application editor's preview: the application's theme,
    * title, favicon and custom head belong to the visitor's page, not to the
@@ -68,7 +70,7 @@ export function AuthDivider({label}: {label?: string}) {
   return (
     <div className="flex items-center gap-3">
       <span className="h-px flex-1 bg-border" />
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
         {label || i18next.t("general:Or")}
       </span>
       <span className="h-px flex-1 bg-border" />
@@ -186,6 +188,7 @@ export function AuthLayout({
   onLanguageChange,
   onBack,
   footer,
+  corner,
   preview,
 }: AuthLayoutProps) {
   const themePreview = preview === "theme";
@@ -193,6 +196,9 @@ export function AuthLayout({
   const application = useShowcaseApplication(ownApplication, !preview);
   const showcased = !!useShowcaseBundle(!preview);
   useApplicationTheme(application, !preview || themePreview);
+  // an application that hides the theme switch is painted light, or dark when its theme says so
+  const themeLocked = !Setting.isSigninItemVisible(application, "Theme");
+  useForcedTheme(themeLocked && !preview ? "light" : null);
   // an application can force the dark palette regardless of the visitor's own
   // preference, and the logo has to follow the palette that is actually painted
   const isDark = useIsDark();
@@ -263,6 +269,8 @@ export function AuthLayout({
       style={backgroundUrl ? {backgroundImage: `url(${backgroundUrl})`} : undefined}
     >
       {embedded ? null : <CustomStyle css={formCss} />}
+      {/* embedded, the panel has no edge of its own: the corner goes to the frame's, the host page's dialog */}
+      {embedded ? corner : null}
 
       <div className="login-topbar flex items-center justify-end gap-1 p-3 sm:p-4">
         {hideLanguages ? null : (
@@ -272,7 +280,7 @@ export function AuthLayout({
             onLanguageChange={onLanguageChange}
           />
         )}
-        <ThemeToggle className="rounded-full text-muted-foreground hover:text-foreground" />
+        {themeLocked ? null : <ThemeToggle className="rounded-full text-muted-foreground hover:text-foreground" />}
       </div>
 
       <div
@@ -295,7 +303,7 @@ export function AuthLayout({
           {/* one box: an application's own `.login-panel` styles the card itself */}
           <div
             className={cn(
-              "login-panel flex w-full items-center overflow-hidden text-card-foreground",
+              "login-panel relative flex w-full items-center overflow-hidden text-card-foreground",
               panelIsLight && "theme-scope-light",
               bleed ? "login-panel-bleed bg-transparent" : "rounded-xl border bg-card shadow-sm",
               // the padding sits on the element an application restyles, so its own
@@ -303,6 +311,7 @@ export function AuthLayout({
               sidePanel ? null : bleed ? "px-1 pt-4" : "px-6 pt-6 sm:px-8 sm:pt-8",
             )}
           >
+            {embedded ? null : corner}
             {sidePanel ? (
               <CustomHtml html={application.formSideHtml} trusted={trusted} className="side-image hidden w-[420px] shrink-0 self-stretch lg:block" />
             ) : null}
