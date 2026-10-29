@@ -15,14 +15,19 @@
 package idp
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/casdoor/casdoor/util"
 	"golang.org/x/oauth2"
 )
 
@@ -48,11 +53,10 @@ func (idp *BilibiliIdProvider) SetHttpClient(client *http.Client) {
 func (idp *BilibiliIdProvider) getConfig(clientId string, clientSecret string, redirectUrl string) *oauth2.Config {
 	endpoint := oauth2.Endpoint{
 		TokenURL: "https://api.bilibili.com/x/account-oauth2/v1/token",
-		AuthURL:  "http://member.bilibili.com/arcopen/fn/user/account/info",
+		AuthURL:  "https://account.bilibili.com/pc/account-pc/auth/oauth",
 	}
 
 	config := &oauth2.Config{
-		Scopes:       []string{"", ""},
 		Endpoint:     endpoint,
 		ClientID:     clientId,
 		ClientSecret: clientSecret,
@@ -91,19 +95,31 @@ type BilibiliIdProviderTokenResponse struct {
 // GetToken use code get access_token (*operation of getting code ought to be done in front)
 // get more detail via: https://openhome.bilibili.com/doc/4/eaf0e2b5-bde9-b9a0-9be1-019bb455701c
 func (idp *BilibiliIdProvider) GetToken(code string) (*oauth2.Token, error) {
-	pTokenParams := &struct {
-		ClientId     string `json:"client_id"`
-		ClientSecret string `json:"client_secret"`
-		GrantType    string `json:"grant_type"`
-		Code         string `json:"code"`
-	}{
-		idp.Config.ClientID,
-		idp.Config.ClientSecret,
-		"authorization_code",
-		code,
+	// Bilibili requires URL parameters and an empty form POST, not a JSON body.
+	params := url.Values{
+		"client_id":     {idp.Config.ClientID},
+		"client_secret": {idp.Config.ClientSecret},
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
 	}
-
-	data, err := idp.postWithBody(pTokenParams, idp.Config.Endpoint.TokenURL)
+	request, err := http.NewRequest(http.MethodPost, idp.Config.Endpoint.TokenURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := idp.Client.Do(request)
+	if err != nil {
+		// net/url.Error includes the request URL, which contains the client secret.
+		if urlErr, ok := err.(*url.Error); ok {
+			return nil, fmt.Errorf("Bilibili token request failed: %w", urlErr.Err)
+		}
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Bilibili token request failed: HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -117,10 +133,14 @@ func (idp *BilibiliIdProvider) GetToken(code string) (*oauth2.Token, error) {
 	if response.Code != 0 {
 		return nil, fmt.Errorf("pToken.Errcode = %d, pToken.Errmsg = %s", response.Code, response.Message)
 	}
+	if response.Data.AccessToken == "" {
+		return nil, fmt.Errorf("Bilibili returned an empty access token")
+	}
 
 	token := &oauth2.Token{
-		AccessToken:  response.Data.AccessToken,
-		Expiry:       time.Unix(time.Now().Unix()+int64(response.Data.ExpiresIn), 0),
+		AccessToken: response.Data.AccessToken,
+		// Despite its name, expires_in is an absolute Unix timestamp in Bilibili's API.
+		Expiry:       time.Unix(int64(response.Data.ExpiresIn), 0),
 		RefreshToken: response.Data.RefreshToken,
 	}
 
@@ -156,18 +176,18 @@ type BilibiliUserInfoResponse struct {
 // GetUserInfo Use  access_token to get UserInfo
 // get more detail via: https://openhome.bilibili.com/doc/4/feb66f99-7d87-c206-00e7-d84164cd701c
 func (idp *BilibiliIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
-	accessToken := token.AccessToken
-	clientId := idp.Config.ClientID
-
-	params := url.Values{}
-	params.Add("client_id", clientId)
-	params.Add("access_token", accessToken)
-
-	userInfoUrl := fmt.Sprintf("%s?%s", idp.Config.Endpoint.AuthURL, params.Encode())
-
-	resp, err := idp.Client.Get(userInfoUrl)
+	request, err := http.NewRequest(http.MethodGet, "https://member.bilibili.com/arcopen/fn/user/account/info", nil)
 	if err != nil {
 		return nil, err
+	}
+	idp.signUserInfoRequest(request, token.AccessToken)
+	resp, err := idp.Client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Bilibili userinfo request failed: HTTP %d", resp.StatusCode)
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -185,6 +205,9 @@ func (idp *BilibiliIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 	}
 
 	openID := bUserInfoResponse.Data.OpenId
+	if openID == "" {
+		return nil, fmt.Errorf("Bilibili returned an empty openid")
+	}
 	idStr := oauthStableID("", "", openID, "", "")
 	userInfo := &UserInfo{
 		Id:          idStr,
@@ -196,26 +219,24 @@ func (idp *BilibiliIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 	return userInfo, nil
 }
 
-func (idp *BilibiliIdProvider) postWithBody(body interface{}, url string) ([]byte, error) {
-	bs, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	r := strings.NewReader(string(bs))
-	resp, err := idp.Client.Post(url, "application/json;charset=UTF-8", r)
-	if err != nil {
-		return nil, err
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			return
-		}
-	}(resp.Body)
+// https://openhome.bilibili.com/doc/4/8673959e-f7bb-56e6-6e68-d225f971b81b
+func (idp *BilibiliIdProvider) signUserInfoRequest(request *http.Request, accessToken string) {
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Access-Token", accessToken)
+	request.Header.Set("X-Bili-Accesskeyid", idp.Config.ClientID)
+	request.Header.Set("X-Bili-Content-Md5", "d41d8cd98f00b204e9800998ecf8427e")
+	request.Header.Set("X-Bili-Signature-Method", "HMAC-SHA256")
+	request.Header.Set("X-Bili-Signature-Nonce", util.GenerateUUID())
+	request.Header.Set("X-Bili-Signature-Version", "2.0")
+	request.Header.Set("X-Bili-Timestamp", strconv.FormatInt(time.Now().Unix(), 10))
 
-	return data, nil
+	// Sign lowercase header names in lexicographic order, without a trailing newline.
+	var lines []string
+	for _, name := range []string{"x-bili-accesskeyid", "x-bili-content-md5", "x-bili-signature-method", "x-bili-signature-nonce", "x-bili-signature-version", "x-bili-timestamp"} {
+		lines = append(lines, name+":"+request.Header.Get(name))
+	}
+	mac := hmac.New(sha256.New, []byte(idp.Config.ClientSecret))
+	_, _ = mac.Write([]byte(strings.Join(lines, "\n")))
+	request.Header.Set("Authorization", hex.EncodeToString(mac.Sum(nil)))
 }
