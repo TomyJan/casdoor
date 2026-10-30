@@ -199,14 +199,14 @@ export function copyToClipboard(text: string) {
   showMessage("success", i18next.t("general:Copied to clipboard successfully"));
 }
 
-export function getClickable(text) {
+export function getClickable(text, label: React.ReactNode = text) {
   return (
     <button
       type="button"
       className="text-left underline-offset-4 hover:underline"
       onClick={() => copyToClipboard(text)}
     >
-      {text}
+      {label}
     </button>
   );
 }
@@ -336,6 +336,10 @@ export const OtherProviderInfo = {
     "Twilio SMS": {
       logo: `${StaticBaseUrl}/img/social_twilio.svg`,
       url: "https://www.twilio.com/messaging",
+    },
+    "Twilio Verify": {
+      logo: `${StaticBaseUrl}/img/social_twilio.svg`,
+      url: "https://www.twilio.com/docs/verify",
     },
     "SmsBao SMS": {
       logo: `${StaticBaseUrl}/img/social_smsbao.png`,
@@ -1241,11 +1245,45 @@ export function openLinkSafe(link) {
   a.click();
 }
 
+let leavingPage = false;
+
+// a custom scheme hands the link to a native app and a fragment of this page stays on it
+function unloadsPage(link) {
+  try {
+    const url = new URL(link, window.location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+    return !(url.hash !== "" && url.href.split("#")[0] === window.location.href.split("#")[0]);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether goToLink() or createFormAndSubmit() has sent the browser to another page that is still loading. */
+export function isLeavingPage() {
+  return leavingPage;
+}
+
+/** Calls onRestored when the browser shows this page again from its back-forward cache. */
+export function onPageRestored(onRestored) {
+  const onPageShow = (event) => {
+    if (event.persisted) {
+      leavingPage = false;
+      onRestored();
+    }
+  };
+  window.addEventListener("pageshow", onPageShow);
+  return () => window.removeEventListener("pageshow", onPageShow);
+}
+
 export function goToLink(link) {
   if (isScriptUrl(link)) {
     return;
   }
-  window.location.href = withBasePath(link);
+  const href = withBasePath(link);
+  leavingPage = unloadsPage(href);
+  window.location.href = href;
 }
 
 
@@ -1564,6 +1602,7 @@ export function getProviderTypeOptions(category) {
         {id: "Huawei Cloud SMS", name: "Huawei Cloud SMS"},
         {id: "UCloud SMS", name: "UCloud SMS"},
         {id: "Twilio SMS", name: "Twilio SMS"},
+        {id: "Twilio Verify", name: "Twilio Verify"},
         {id: "SmsBao SMS", name: "SmsBao SMS"},
         {id: "SUBMAIL SMS", name: "SUBMAIL SMS"},
         {id: "Msg91 SMS", name: "Msg91 SMS"},
@@ -2528,6 +2567,7 @@ export function createFormAndSubmit(url, params) {
   }
 
   document.body.appendChild(form);
+  leavingPage = unloadsPage(url);
   form.submit();
   setTimeout(() => {form.remove();}, 500);
 }

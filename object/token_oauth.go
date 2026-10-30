@@ -24,7 +24,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, nonce string, username string, password string, countryCode string, host string, refreshToken string, tag string, avatar string, lang string, subjectToken string, subjectTokenType string, assertion string, clientAssertion string, clientAssertionType string, audience string, resource string, dpopProof string, clientIp string) (interface{}, error) {
+func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, nonce string, username string, password string, countryCode string, host string, refreshToken string, tag string, avatar string, phoneCode string, phoneRequired bool, lang string, subjectToken string, subjectTokenType string, requestedTokenType string, assertion string, clientAssertion string, clientAssertionType string, audience string, resource string, dpopProof string, clientIp string) (interface{}, error) {
 	var (
 		application *Application
 		err         error
@@ -62,7 +62,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 
 	// Handle WeChat Mini Program flow separately — it does not use standard OAuth grant types
 	if tag == "wechat_miniprogram" {
-		token, tokenError, err := GetWechatMiniProgramToken(application, code, host, username, avatar, lang)
+		token, tokenError, err := GetWechatMiniProgramToken(application, code, phoneCode, phoneRequired, host, username, avatar, lang)
 		if err != nil {
 			return nil, err
 		}
@@ -102,6 +102,16 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 		// so we skip password verification and mint a token directly.
 		token, tokenError, err = GetDeviceCodeToken(application, username, scope, nonce, host)
 	case "urn:ietf:params:oauth:grant-type:token-exchange": // Token Exchange Grant (RFC 8693)
+		if requestedTokenType == IdJagTokenType {
+			idJag, tokenError, err := GetIdJagToken(application, clientSecret, subjectToken, subjectTokenType, audience, resource, scope, host)
+			if err != nil {
+				return nil, err
+			}
+			if tokenError != nil {
+				return tokenError, nil
+			}
+			return idJag, nil
+		}
 		token, tokenError, err = GetTokenExchangeToken(application, clientSecret, subjectToken, subjectTokenType, audience, scope, host)
 	case "refresh_token":
 		refreshToken2, err := RefreshToken(application, grantType, refreshToken, scope, clientId, clientSecret, resource, host, dpopProof, "/api/login/oauth/access_token")
@@ -615,8 +625,23 @@ func GetTokenByUserWithAuth(application *Application, user *User, scope string, 
 	return token, nil
 }
 
+func getUserByWechatMiniProgramPhone(owner string, e164Phone string, nationalPhone string) (*User, error) {
+	user, err := GetUserByPhone(owner, e164Phone)
+	if err != nil || user != nil {
+		return user, err
+	}
+
+	// users created before country codes were stored
+	user = &User{}
+	existed, err := ormer.Engine.Where("owner = ? and phone = ? and country_code = ''", owner, nationalPhone).Get(user)
+	if err != nil || !existed {
+		return nil, err
+	}
+	return user, nil
+}
+
 // GetWechatMiniProgramToken handles the WeChat Mini Program flow.
-func GetWechatMiniProgramToken(application *Application, code string, host string, username string, avatar string, lang string) (*Token, *TokenError, error) {
+func GetWechatMiniProgramToken(application *Application, code string, phoneCode string, phoneRequired bool, host string, username string, avatar string, lang string) (*Token, *TokenError, error) {
 	mpProvider := GetWechatMiniProgramProvider(application)
 	if mpProvider == nil {
 		return nil, &TokenError{
@@ -650,6 +675,54 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 		return nil, nil, err
 	}
 
+	phone, countryCode := "", ""
+	if user == nil && phoneCode != "" {
+		e164Phone, err := mpIdp.GetPhoneNumber(phoneCode)
+		if err != nil {
+			return nil, &TokenError{
+				Error:            InvalidGrant,
+				ErrorDescription: fmt.Sprintf("get wechat mini program phone number error: %s", err.Error()),
+			}, nil
+		}
+		phone, countryCode = util.ParseE164Phone(e164Phone)
+
+		user, err = getUserByWechatMiniProgramPhone(application.Organization, e164Phone, phone)
+		if err != nil {
+			return nil, nil, err
+		}
+		if user != nil {
+			if tokenError := getInactiveUserTokenError(user); tokenError != nil {
+				return nil, tokenError, nil
+			}
+			if user.WeChat != "" {
+				return nil, &TokenError{
+					Error:            InvalidGrant,
+					ErrorDescription: "the phone number is already bound to another wechat account",
+				}, nil
+			}
+
+			user.WeChat = openId
+			if user.Properties == nil {
+				user.Properties = map[string]string{}
+			}
+			user.Properties[UserPropertiesWechatOpenId] = openId
+			if unionId != "" {
+				user.Properties[UserPropertiesWechatUnionId] = unionId
+			}
+			_, err = UpdateUser(user.GetId(), user, []string{"wechat", "properties"}, false)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+
+	if user == nil && phone == "" && phoneRequired {
+		return nil, &TokenError{
+			Error:            "phone_required",
+			ErrorDescription: "the wechat account is not linked yet, please authorize the phone number",
+		}, nil
+	}
+
 	if user == nil {
 		if !application.EnableSignUp || !application.IsSignupAllowedFor(application.Organization) {
 			return nil, &TokenError{
@@ -677,6 +750,8 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 			Id:                newUserId,
 			Name:              name,
 			Avatar:            avatar,
+			Phone:             phone,
+			CountryCode:       countryCode,
 			SignupApplication: application.Name,
 			WeChat:            openId,
 			Type:              "normal-user",
@@ -789,56 +864,12 @@ func GetTokenExchangeToken(application *Application, clientSecret string, subjec
 		}, nil
 	}
 
-	subjectOwner, subjectName, subjectScope, tokenError, err := parseAndValidateSubjectToken(subjectToken, application.ClientId)
+	user, subjectScope, tokenError, err := getSubjectTokenUser(application, subjectToken, subjectTokenType)
 	if err != nil {
 		return nil, nil, err
 	}
 	if tokenError != nil {
 		return nil, tokenError, nil
-	}
-
-	// A valid signature is not enough: the subject token must still be active, the same
-	// way the refresh_token grant checks it, or a revoked token can be exchanged forever.
-	var subjectTokenRecord *Token
-	if subjectTokenType == "urn:ietf:params:oauth:token-type:id_token" {
-		subjectTokenRecord, err = GetTokenByIdToken(subjectToken)
-	} else {
-		subjectTokenRecord, err = GetTokenByAccessToken(subjectToken)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	if subjectTokenRecord == nil || subjectTokenRecord.ExpiresIn <= 0 {
-		return nil, &TokenError{
-			Error:            InvalidGrant,
-			ErrorDescription: "subject_token is revoked or unknown",
-		}, nil
-	}
-
-	user, err := getUser(subjectOwner, subjectName)
-	if err != nil {
-		return nil, nil, err
-	}
-	if user == nil {
-		return nil, &TokenError{
-			Error:            InvalidGrant,
-			ErrorDescription: fmt.Sprintf("user from subject_token does not exist: %s", util.GetId(subjectOwner, subjectName)),
-		}, nil
-	}
-
-	if user.IsForbidden {
-		return nil, &TokenError{
-			Error:            InvalidGrant,
-			ErrorDescription: "the user is forbidden to sign in, please contact the administrator",
-		}, nil
-	}
-
-	// the same as signing in: only a shared application serves the users of other organizations
-	if user.Owner != application.Organization && !application.IsShared {
-		return nil, &TokenError{
-			Error:            InvalidGrant,
-			ErrorDescription: fmt.Sprintf("user from subject_token: %s does not belong to the organization of the application: %s", user.GetId(), application.Organization),
-		}, nil
 	}
 
 	// RFC 8693: "audience" is the target service the new token is for, by client ID or by application name
@@ -936,6 +967,60 @@ func GetTokenExchangeToken(application *Application, clientSecret string, subjec
 	}
 
 	return token, nil, nil
+}
+
+// getSubjectTokenUser returns the user of an active subject token issued by Casdoor to the application, and the token's scope
+func getSubjectTokenUser(application *Application, subjectToken string, subjectTokenType string) (*User, string, *TokenError, error) {
+	subjectOwner, subjectName, subjectScope, tokenError, err := parseAndValidateSubjectToken(subjectToken, application.ClientId)
+	if err != nil || tokenError != nil {
+		return nil, "", tokenError, err
+	}
+
+	// A valid signature is not enough: the subject token must still be active, the same
+	// way the refresh_token grant checks it, or a revoked token can be exchanged forever.
+	var subjectTokenRecord *Token
+	if subjectTokenType == "urn:ietf:params:oauth:token-type:id_token" {
+		subjectTokenRecord, err = GetTokenByIdToken(subjectToken)
+	} else {
+		subjectTokenRecord, err = GetTokenByAccessToken(subjectToken)
+	}
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if subjectTokenRecord == nil || subjectTokenRecord.ExpiresIn <= 0 {
+		return nil, "", &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: "subject_token is revoked or unknown",
+		}, nil
+	}
+
+	user, err := getUser(subjectOwner, subjectName)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if user == nil {
+		return nil, "", &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("user from subject_token does not exist: %s", util.GetId(subjectOwner, subjectName)),
+		}, nil
+	}
+
+	if user.IsForbidden {
+		return nil, "", &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: "the user is forbidden to sign in, please contact the administrator",
+		}, nil
+	}
+
+	// the same as signing in: only a shared application serves the users of other organizations
+	if user.Owner != application.Organization && !application.IsShared {
+		return nil, "", &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("user from subject_token: %s does not belong to the organization of the application: %s", user.GetId(), application.Organization),
+		}, nil
+	}
+
+	return user, subjectScope, nil, nil
 }
 
 func GetAccessTokenByUser(user *User, host string) (string, error) {
