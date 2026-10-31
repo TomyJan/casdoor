@@ -44,7 +44,7 @@ type Setting struct {
 	RecordRetentionDays int `json:"recordRetentionDays"`
 
 	// hides the links to Casdoor Cloud that the console shows its admins
-	HideCloudPromotion bool `json:"hideCloudPromotion"`
+	HideCloudPromotion bool `xorm:"default true" json:"hideCloudPromotion"`
 }
 
 func GetSetting() (*Setting, error) {
@@ -127,10 +127,11 @@ func initBuiltInSetting() *Setting {
 
 	currentTime := util.GetCurrentTime()
 	setting = &Setting{
-		Owner:       settingOwner,
-		Name:        settingName,
-		CreatedTime: currentTime,
-		UpdatedTime: currentTime,
+		Owner:              settingOwner,
+		Name:               settingName,
+		CreatedTime:        currentTime,
+		UpdatedTime:        currentTime,
+		HideCloudPromotion: true,
 	}
 	_, err = ormer.Engine.Insert(setting)
 	if err != nil {
