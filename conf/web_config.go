@@ -14,6 +14,15 @@
 
 package conf
 
+import "sync/atomic"
+
+// Keep promotion hidden until the database setting explicitly enables it.
+var showCloudPromotion atomic.Bool
+
+func SetHideCloudPromotion(hide bool) {
+	showCloudPromotion.Store(!hide)
+}
+
 type WebConfig struct {
 	ShowGithubCorner    bool   `json:"showGithubCorner"`
 	ForceLanguage       string `json:"forceLanguage"`
@@ -24,6 +33,7 @@ type WebConfig struct {
 	MaxItemsForFlatMenu int64  `json:"maxItemsForFlatMenu"`
 	ThemeShowcase       bool   `json:"themeShowcase"`
 	MarketplaceUrl      string `json:"marketplaceUrl"`
+	ShowCloudPromotion  bool   `json:"showCloudPromotion"`
 }
 
 func GetWebConfig() *WebConfig {
@@ -53,6 +63,8 @@ func GetWebConfig() *WebConfig {
 	if config.ThemeShowcase {
 		config.MarketplaceUrl = GetConfigString("marketplaceUrl")
 	}
+
+	config.ShowCloudPromotion = showCloudPromotion.Load()
 
 	return config
 }
