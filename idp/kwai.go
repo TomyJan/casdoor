@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -146,10 +147,17 @@ func (idp *KwaiIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 		return nil, fmt.Errorf("get user info error: %s", kwaiUserInfo.ErrorMsg)
 	}
 
+	openID := ""
+	if x := token.Extra("open_id"); x != nil {
+		if s, ok := x.(string); ok {
+			openID = strings.TrimSpace(s)
+		}
+	}
+	idStr := oauthStableID("", "", openID, "", "")
 	userInfo := &UserInfo{
-		Id:          token.Extra("open_id").(string),
-		Username:    kwaiUserInfo.UserInfo.Name,
-		DisplayName: kwaiUserInfo.UserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin("", "", "", openID, ""),
+		DisplayName: displayNameFromNickname(kwaiUserInfo.UserInfo.Name, "", "", "", idStr),
 		AvatarUrl:   kwaiUserInfo.UserInfo.Head,
 		Extra: map[string]string{
 			"gender": kwaiUserInfo.UserInfo.Sex,

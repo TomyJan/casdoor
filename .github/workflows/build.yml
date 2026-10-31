@@ -48,12 +48,12 @@ jobs:
           cache-dependency-path: ./web/yarn.lock
       - run: yarn install
         working-directory: ./web
-      - run: yarn typecheck && yarn lint
+      - run: yarn test && yarn typecheck && yarn lint
         working-directory: ./web
       - run: CI=false yarn run build
         working-directory: ./web
       - name: Upload build artifacts
-        if: github.repository == 'casdoor/casdoor' && github.event_name == 'push'
+        if: github.repository == 'TomyJan/casdoor' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build-${{ github.run_id }}
@@ -232,8 +232,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # Releases are cut by hand: push a `vX.Y.Z` tag and this job publishes it.
-    if: github.repository == 'casdoor/casdoor' && startsWith(github.ref, 'refs/tags/v')
+    # The tag-release workflow pushes `vX.Y.Z` tags to publish a release.
+    if: github.repository == 'TomyJan/casdoor' && startsWith(github.ref, 'refs/tags/v')
     needs: [frontend, backend, linter, e2e]
     steps:
       - name: Checkout
@@ -276,14 +276,16 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Multiple version tags may point at the same commit. Use the tag
+          # that triggered this run, not the one chosen by git describe.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
   docker-release:
     name: Docker Release
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    if: github.repository == 'casdoor/casdoor' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'TomyJan/casdoor' && startsWith(github.ref, 'refs/tags/v')
     needs: [frontend, backend, linter, e2e]
     steps:
       - name: Checkout
@@ -293,21 +295,19 @@ jobs:
           # needs the full history and the tags, not the default shallow clone.
           fetch-depth: 0
 
-      # Tag `v1.2.3` publishes images `1.2.3`, `v1.2.3`, `1.2`, `1` and `latest`.
-      # Pre-release tags such as `v1.2.3-beta.1` only publish `1.2.3-beta.1` and
+      # Registry versions keep the historical, un-prefixed form: tag `v1.2.3`
+      # publishes `1.2.3`. `latest` is skipped for pre-release tags such as
       # `v1.2.3-beta.1`.
       - name: Resolve the released version
         id: version
         run: |
           version=${GITHUB_REF_NAME#v}
           echo "version=$version" >> $GITHUB_OUTPUT
-          for image in casdoor casdoor-all-in-one; do
-            tags="casbin/$image:$version,casbin/$image:v$version"
-            if [[ "$version" != *-* ]]; then
-              tags="$tags,casbin/$image:${version%.*},casbin/$image:${version%%.*},casbin/$image:latest"
-            fi
-            echo "$image=$tags" >> $GITHUB_OUTPUT
-          done
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -331,7 +331,9 @@ jobs:
           target: STANDARD
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.version.outputs.casdoor }}
+          tags: |
+            tomyjan/casdoor:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor:latest' || '' }}
 
       - name: Push All In One Version to Docker Hub
         uses: docker/build-push-action@v3
@@ -340,37 +342,6 @@ jobs:
           target: ALLINONE
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.version.outputs['casdoor-all-in-one'] }}
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # The chart is published as `casdoor` on GHCR, which is what Artifact Hub
-      # lists. `casbin/casdoor` on Docker Hub is the image and uses the same tags,
-      # so Docker Hub keeps the old `casdoor-helm-charts` name for existing installs.
-      - name: Package and push Helm chart
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          helm package manifests/casdoor --version "$VERSION" --app-version "$VERSION"
-          helm push casdoor-$VERSION.tgz oci://ghcr.io/casdoor/helm-charts
-
-          sed -i 's/^name: casdoor$/name: casdoor-helm-charts/' manifests/casdoor/Chart.yaml
-          helm package manifests/casdoor --version "$VERSION" --app-version "$VERSION"
-          helm push casdoor-helm-charts-$VERSION.tgz oci://registry-1.docker.io/casbin
-
-      - name: Set up ORAS
-        uses: oras-project/setup-oras@v1
-
-      - name: Push Artifact Hub metadata
-        working-directory: manifests
-        run: |
-          for ref in ghcr.io/casdoor/helm-charts/casdoor registry-1.docker.io/casbin/casdoor-helm-charts; do
-            oras push "$ref:artifacthub.io" \
-              --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-              artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
-          done
+          tags: |
+            tomyjan/casdoor-all-in-one:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.prerelease == 'false' && 'tomyjan/casdoor-all-in-one:latest' || '' }}

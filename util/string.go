@@ -121,22 +121,36 @@ func SpaceToCamel(name string) string {
 	return strings.Join(words, "")
 }
 
-func GetOwnerAndNameFromIdWithError(id string) (string, string, error) {
+// ParseUserId splits a userId into (ownerType, owner, name, err).
+//
+//	2-part "owner/name"       → ownerType="",    owner="owner", name="name"
+//	3-part "type/owner/name"  → ownerType="type", owner="owner", name="name"
+//
+// The 3-part form is used for typed identities such as app credentials
+// ("app/org-name/app-name"). All other IDs use the 2-part form.
+func ParseUserId(id string) (ownerType, owner, name string, err error) {
 	tokens := strings.Split(id, "/")
-	if len(tokens) != 2 {
-		return "", "", errors.New("GetOwnerAndNameFromId() error, wrong token count for ID: " + id)
+	switch len(tokens) {
+	case 2:
+		return "", tokens[0], tokens[1], nil
+	case 3:
+		return tokens[0], tokens[1], tokens[2], nil
+	default:
+		return "", "", "", errors.New("ParseUserId() error, wrong token count for ID: " + id)
 	}
+}
 
-	return tokens[0], tokens[1], nil
+func GetOwnerAndNameFromIdWithError(id string) (string, string, error) {
+	_, owner, name, err := ParseUserId(id)
+	return owner, name, err
 }
 
 func GetOwnerFromId(id string) string {
-	tokens := strings.Split(id, "/")
-	if len(tokens) != 2 {
-		panic(errors.New("GetOwnerAndNameFromId() error, wrong token count for ID: " + id))
+	_, owner, _, err := ParseUserId(id)
+	if err != nil {
+		panic(err)
 	}
-
-	return tokens[0]
+	return owner
 }
 
 func GetOwnerAndNameFromIdNoCheck(id string) (string, string) {

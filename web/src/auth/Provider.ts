@@ -168,7 +168,7 @@ const authInfo = {
     endpoint: "https://example.com/",
   },
   Bilibili: {
-    endpoint: "https://passport.bilibili.com/register/pc_oauth2.html",
+    endpoint: "https://account.bilibili.com/pc/account-pc/auth/oauth",
   },
   Line: {
     scope: "profile%20openid%20email",
@@ -562,7 +562,7 @@ export function getAuthUrl(application: any, provider: any, method: string, code
     }
     return authUrl;
   } else if (provider.type === "Bilibili") {
-    return `${endpoint}#/?client_id=${provider.clientId}&return_url=${redirectUri}&state=${state}&response_type=code`;
+    return `${endpoint}?${new URLSearchParams({client_id: provider.clientId, gourl: redirectUri, state})}`;
   } else if (provider.type === "Deezer") {
     return `${endpoint}?app_id=${provider.clientId}&redirect_uri=${redirectUri}&perms=${scope}`;
   } else if (provider.type === "Lastfm") {

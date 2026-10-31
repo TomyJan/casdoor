@@ -195,12 +195,14 @@ func (idp *GiteeIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) 
 		return nil, err
 	}
 
+	uid := strconv.Itoa(gtUserInfo.Id)
+	idStr := oauthStableID(uid, "", "", "", "")
 	userInfo := UserInfo{
-		Id:          strconv.Itoa(gtUserInfo.Id),
-		Username:    gtUserInfo.Login,
-		DisplayName: gtUserInfo.Name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(gtUserInfo.Login, "", "", "", ""),
+		DisplayName: displayNameFromNickname("", gtUserInfo.Name, gtUserInfo.Login, "", ""),
 		Email:       gtUserInfo.Email,
-		// Gitee only exposes the account's confirmed primary email
+		// Gitee only exposes the account's confirmed primary email.
 		EmailVerified: gtUserInfo.Email != "",
 		AvatarUrl:     gtUserInfo.AvatarUrl,
 	}
