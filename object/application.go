@@ -115,6 +115,7 @@ type Application struct {
 	DefaultTag                   string          `xorm:"varchar(100)" json:"defaultTag"`
 	HeaderHtml                   string          `xorm:"mediumtext" json:"headerHtml"`
 	PageHtml                     string          `xorm:"mediumtext" json:"pageHtml"`
+	EnableCustomScript           bool            `json:"enableCustomScript"`
 	EnablePassword               bool            `json:"enablePassword"`
 	EnableSignUp                 bool            `json:"enableSignUp"`
 	DisableSelfSignup            bool            `json:"disableSelfSignup"`
@@ -310,6 +311,49 @@ func getApplication(owner string, name string) (*Application, error) {
 	} else {
 		return nil, nil
 	}
+}
+
+func GetApplicationByOrganizationAndName(organization string, name string) (*Application, error) {
+	if organization == "" || name == "" {
+		return nil, nil
+	}
+
+	realApplicationName, sharedOrg := util.GetSharedOrgFromApp(name)
+
+	application := Application{}
+	existed, err := ormer.Engine.Where("organization = ?", organization).And("name = ?", realApplicationName).Get(&application)
+	if err != nil {
+		return nil, err
+	}
+
+	if !existed {
+		return nil, nil
+	}
+
+	if application.IsShared && sharedOrg != "" {
+		application.Organization = sharedOrg
+	}
+
+	err = extendApplicationWithProviders(&application)
+	if err != nil {
+		return nil, err
+	}
+
+	err = extendApplicationWithOrg(&application)
+	if err != nil {
+		return nil, err
+	}
+
+	err = extendApplicationWithSigninMethods(&application)
+	if err != nil {
+		return nil, err
+	}
+	err = extendApplicationWithSigninItems(&application)
+	if err != nil {
+		return nil, err
+	}
+
+	return &application, nil
 }
 
 func GetApplicationByOrganizationName(organization string) (*Application, error) {
