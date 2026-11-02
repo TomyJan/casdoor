@@ -182,6 +182,7 @@ type DeviceAuthCache struct {
 	ApplicationId string
 	ClientId      string
 	Scope         string
+	Resource      string
 	RequestAt     time.Time
 	Status        string
 	CancelToken   string
@@ -223,9 +224,9 @@ type DeviceAuthResponse struct {
 	Interval        int    `json:"interval"`
 }
 
-// validateResourceURI validates that the resource parameter is a valid absolute URI
+// ValidateResourceURI validates that the resource parameter is a valid absolute URI
 // according to RFC 8707 Section 2
-func validateResourceURI(resource string) error {
+func ValidateResourceURI(resource string) error {
 	if resource == "" {
 		return nil // empty resource is allowed (backward compatibility)
 	}
@@ -463,7 +464,7 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 		}, nil
 	}
 
-	msg, application, err := CheckOAuthLogin(clientId, "", responseType, redirectUri, scope, state, nonce, lang)
+	msg, application, err := CheckOAuthLogin(clientId, GetCimdOrganization(clientId, user), responseType, redirectUri, scope, state, nonce, lang)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +500,7 @@ func GetOAuthCode(userId string, clientId string, provider string, signinMethod 
 	scope = expandedScope
 
 	// Validate resource parameter (RFC 8707)
-	if err := validateResourceURI(resource); err != nil {
+	if err := ValidateResourceURI(resource); err != nil {
 		return &Code{
 			Message: err.Error(),
 			Code:    "",
@@ -702,6 +703,13 @@ func RefreshToken(application *Application, grantType string, refreshToken strin
 		return nil, err
 	}
 
+	// the shared application of a URL client_id works for the organization of its user
+	if application.IsShared && IsClientIdMetadataUrl(application.ClientId) && application.Organization != user.Owner {
+		sharedApplication := *application
+		sharedApplication.Organization = user.Owner
+		application = &sharedApplication
+	}
+
 	newAccessToken, newRefreshToken, newIdToken, tokenName, err := generateJwtTokenWithOptions(application, user, "", "", "", scope, resource, host, jwtTokenOptions{RefreshScope: oldTokenScope})
 	if err != nil {
 		return &TokenError{
@@ -867,20 +875,21 @@ func mintImplicitToken(application *Application, username string, scope string, 
 			return nil, tokenError, nil
 		}
 	}
-	return mintTokenForUser(application, user, scope, nonce, host)
+	return mintTokenForUser(application, user, scope, nonce, host, "")
 }
 
 // GetDeviceCodeToken takes the full user ID recorded by the browser approval: looking a bare name
 // up again in the application's organization may resolve to another organization's namesake.
-func GetDeviceCodeToken(application *Application, userId string, scope string, nonce string, host string) (*Token, *TokenError, error) {
+// resource is the resource indicator the device authorization request was approved for (RFC 8707).
+func GetDeviceCodeToken(application *Application, userId string, scope string, nonce string, host string, resource string) (*Token, *TokenError, error) {
 	user, err := GetUser(userId)
 	if err != nil {
 		return nil, nil, err
 	}
-	return mintTokenForUser(application, user, scope, nonce, host)
+	return mintTokenForUser(application, user, scope, nonce, host, resource)
 }
 
-func mintTokenForUser(application *Application, user *User, scope string, nonce string, host string) (*Token, *TokenError, error) {
+func mintTokenForUser(application *Application, user *User, scope string, nonce string, host string, resource string) (*Token, *TokenError, error) {
 	expandedScope, ok := IsScopeValidAndExpand(scope, application)
 	if !ok {
 		return nil, &TokenError{
@@ -903,7 +912,7 @@ func mintTokenForUser(application *Application, user *User, scope string, nonce 
 		}, nil
 	}
 
-	token, err := GetTokenByUser(application, user, scope, nonce, "", host)
+	token, err := GetTokenByUserWithAuth(application, user, scope, nonce, "", host, 0, false, resource)
 	if err != nil {
 		return nil, nil, err
 	}

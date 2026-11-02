@@ -992,7 +992,7 @@ export default function ProviderEditPage() {
           <Input value={provider.host ?? ""} onChange={(e) => updateProviderField("host", e.target.value)} />
         </FormRow>
       ) : null}
-      {!["Azure ACS", "SendGrid", "Resend"].includes(provider.type) ? (
+      {!["Azure ACS", "Custom HTTP Email", "SendGrid", "Resend"].includes(provider.type) ? (
         <React.Fragment>
           <FormRow label={i18next.t("general:Port")} tooltip={i18next.t("provider:Port - Tooltip")}>
             <Input type="number" value={provider.port ?? 0} onChange={(e) => updateProviderField("port", e.target.value)} />
@@ -1032,7 +1032,7 @@ export default function ProviderEditPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateProviderField("content", "You have requested a verification code at Casdoor. Here is your code: %s, please enter in 5 minutes. <reset-link>Or click %link to reset</reset-link>")}
+              onClick={() => updateProviderField("content", "You have requested a verification code at Casdoor. Here is your code: %s, please enter in 10 minutes. <reset-link>Or click %link to reset</reset-link>")}
             >
               {i18next.t("general:Reset to Default")} (Text)
             </Button>
@@ -1098,7 +1098,7 @@ export default function ProviderEditPage() {
             placeholder={i18next.t("user:Input your email")}
             onChange={(e) => updateProviderField("receiver", e.target.value)}
           />
-          {!["Azure ACS", "SendGrid", "Resend"].includes(provider.type) ? (
+          {!["Azure ACS", "Custom HTTP Email", "SendGrid", "Resend"].includes(provider.type) ? (
             <Button variant="outline" onClick={() => ProviderTest.connectSmtpServer(provider)}>
               {i18next.t("provider:Test SMTP Connection")}
             </Button>
@@ -1573,7 +1573,7 @@ export default function ProviderEditPage() {
           <SearchableSelect value={provider.metadata ?? ""} onChange={(v) => updateProviderField("metadata", v)} options={certOptions} />
         </FormRow>
       ) : null}
-      {["GC", "FastSpring"].includes(provider.type) ? (
+      {["GC", "FastSpring", "Polar"].includes(provider.type) ? (
         <FormRow label={i18next.t("general:Host")} tooltip={i18next.t("provider:Host - Tooltip")}>
           <Input value={provider.host ?? ""} onChange={(e) => updateProviderField("host", e.target.value)} />
         </FormRow>

@@ -34,7 +34,10 @@ type LogoutTokenClaims struct {
 
 func generateLogoutToken(application *Application, user *User, sessionId string, host string) (string, error) {
 	nowTime := time.Now()
-	_, originBackend := getOriginFromHost(host)
+	issuer, err := GetOidcIssuerByApplication(host, application)
+	if err != nil {
+		return "", err
+	}
 
 	events := map[string]interface{}{
 		"http://schemas.openid.net/event/backchannel-logout": map[string]interface{}{},
@@ -43,11 +46,12 @@ func generateLogoutToken(application *Application, user *User, sessionId string,
 	claims := LogoutTokenClaims{
 		Events: events,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:   originBackend,
-			Subject:  user.Id,
-			Audience: []string{application.ClientId},
-			IssuedAt: jwt.NewNumericDate(nowTime),
-			ID:       util.GetId(application.Owner, util.GenerateId()),
+			Issuer:    issuer,
+			Subject:   user.Id,
+			Audience:  []string{application.ClientId},
+			IssuedAt:  jwt.NewNumericDate(nowTime),
+			ExpiresAt: jwt.NewNumericDate(nowTime.Add(2 * time.Minute)),
+			ID:        util.GetId(application.Owner, util.GenerateId()),
 		},
 	}
 

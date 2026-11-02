@@ -103,7 +103,12 @@ var defaultApiRules = [][]string{
 	{"*", "*", "GET", "/.well-known/:application/openid-configuration", "*", "*"},
 	{"*", "*", "GET", "/.well-known/:application/oauth-authorization-server", "*", "*"},
 	{"*", "*", "GET", "/.well-known/:application/oauth-protected-resource", "*", "*"},
+	{"*", "*", "GET", "/.well-known/oauth-protected-resource/api/server/:owner/:name", "*", "*"},
 	{"*", "*", "GET", "/.well-known/:application/webfinger", "*", "*"},
+	{"*", "*", "GET", "/orgs/:organization/.well-known/openid-configuration", "*", "*"},
+	{"*", "*", "GET", "/orgs/:organization/.well-known/oauth-authorization-server", "*", "*"},
+	{"*", "*", "GET", "/.well-known/openid-configuration/orgs/:organization", "*", "*"},
+	{"*", "*", "GET", "/.well-known/oauth-authorization-server/orgs/:organization", "*", "*"},
 	{"*", "*", "*", "/.well-known/:application/jwks", "*", "*"},
 	{"*", "*", "GET", "/api/get-saml-login", "*", "*"},
 	{"*", "*", "POST", "/api/acs", "*", "*"},
@@ -242,6 +247,13 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 
 		if user.IsAdmin && subOwner == objOwner {
 			return true, nil
+		}
+
+		if strings.HasPrefix(urlPath, "/api/server/") && subOwner == objOwner {
+			allowed, err := object.IsServerAllowed(user, objOwner, objName)
+			if err != nil || allowed {
+				return allowed, err
+			}
 		}
 	}
 

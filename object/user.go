@@ -1010,6 +1010,10 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 		return false, err
 	}
 
+	if affected != 0 {
+		triggerUserForbiddenWebhook(oldUser, user, columns)
+	}
+
 	if affected != 0 && isUserAccessRevoked(oldUser, user, columns) {
 		// The tokens and sessions are keyed by the old user name, it may have just been renamed
 		err = terminateUserAccess(oldUser)
@@ -1086,6 +1090,10 @@ func UpdateUserForAllFields(id string, user *User) (bool, error) {
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(user)
 	if err != nil {
 		return false, err
+	}
+
+	if affected != 0 {
+		triggerUserForbiddenWebhook(oldUser, user, nil)
 	}
 
 	if affected != 0 && isUserAccessRevoked(oldUser, user, nil) {
@@ -1329,6 +1337,23 @@ func isUserAccessRevoked(oldUser *User, user *User, columns []string) bool {
 	return false
 }
 
+// triggerUserForbiddenWebhook sends a dedicated "forbid-user" or "unforbid-user" event once the
+// update is saved, it covers every caller (API, syncers, LDAP) and not only the "update-user" API
+func triggerUserForbiddenWebhook(oldUser *User, user *User, columns []string) {
+	if columns != nil && !util.InSlice(columns, "is_forbidden") {
+		return
+	}
+	if oldUser.IsForbidden == user.IsForbidden {
+		return
+	}
+
+	if user.IsForbidden {
+		TriggerWebhookForUser("forbid-user", user)
+	} else {
+		TriggerWebhookForUser("unforbid-user", user)
+	}
+}
+
 // terminateUserAccess forces the user offline, it expires the user's tokens and drops all of its
 // sessions, in the same way as the "logout from all applications" flow. It does nothing when the
 // user has neither active tokens nor sessions, so it is safe to call it more than once
@@ -1423,19 +1448,22 @@ func DeleteUser(user *User) (bool, error) {
 }
 
 func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, error) {
-	_, originBackend := getOriginFromHost(host)
-
-	resp := Userinfo{
-		Sub: user.Id,
-		Iss: originBackend,
-		Aud: aud,
-	}
-
 	// Build a TokenFields whitelist from the application config.
 	// If the application has no TokenFields configured (empty list), all fields are allowed.
 	application, err := GetApplicationByClientId(aud)
 	if err != nil {
 		return nil, err
+	}
+
+	issuer, err := GetOidcIssuerByApplication(host, application)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := Userinfo{
+		Sub: user.Id,
+		Iss: issuer,
+		Aud: aud,
 	}
 	allowedFields := make(map[string]bool)
 	hasWhitelist := application != nil && len(application.TokenFields) > 0

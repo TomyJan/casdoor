@@ -523,6 +523,12 @@ export default function OrganizationEditPage() {
               onCheckedChange={(v) => update("useEmailAsUsername", v)}
             />
           </FormRow>
+          <FormRow labelKey="organization:Use organization issuer">
+            <Switch
+              checked={!!organization.useOrganizationIssuer}
+              onCheckedChange={(v) => update("useOrganizationIssuer", v)}
+            />
+          </FormRow>
           <FormRow labelKey="organization:Use permanent avatar">
             <Switch
               checked={!!organization.usePermanentAvatar}
@@ -666,6 +672,55 @@ export default function OrganizationEditPage() {
               checked={!!organization.dcrPolicy && organization.dcrPolicy !== "disabled"}
               disabled={!Setting.isAdminUser(account)}
               onCheckedChange={(v) => update("dcrPolicy", v ? "open" : "disabled")}
+            />
+          </FormRow>
+          <FormRow labelKey="organization:Trusted ID-JAG issuers" block>
+            <EditableTable
+              rows={organization.idJagIssuers ?? []}
+              onChange={(rows) => update("idJagIssuers", rows)}
+              newRow={() => ({issuer: "", jwksUri: "", subject: "", audience: "", user: ""})}
+              disabled={!Setting.isAdminUser(account)}
+              columns={[
+                {
+                  key: "issuer",
+                  title: i18next.t("application:Issuer"),
+                  width: "34%",
+                  render: (row: any, _i, patch) => (
+                    <Input
+                      value={row.issuer ?? ""}
+                      placeholder="https://your-org.okta.com"
+                      aria-invalid={!(row.issuer ?? "").trim()}
+                      disabled={!Setting.isAdminUser(account)}
+                      onChange={(e) => patch({issuer: e.target.value})}
+                    />
+                  ),
+                },
+                {
+                  key: "jwksUri",
+                  title: i18next.t("application:JWKS URL"),
+                  width: "34%",
+                  render: (row: any, _i, patch) => (
+                    <Input
+                      value={row.jwksUri ?? ""}
+                      placeholder={i18next.t("application:Discovered from the issuer if empty")}
+                      disabled={!Setting.isAdminUser(account)}
+                      onChange={(e) => patch({jwksUri: e.target.value})}
+                    />
+                  ),
+                },
+                {
+                  key: "user",
+                  title: i18next.t("general:User"),
+                  render: (row: any, _i, patch) => (
+                    <Input
+                      value={row.user ?? ""}
+                      placeholder="{email}"
+                      disabled={!Setting.isAdminUser(account)}
+                      onChange={(e) => patch({user: e.target.value})}
+                    />
+                  ),
+                },
+              ]}
             />
           </FormRow>
           <FormRow labelKey="organization:Admin navbar items" block>

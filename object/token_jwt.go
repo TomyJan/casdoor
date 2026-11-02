@@ -644,7 +644,10 @@ func generateJwtTokenWithOptions(application *Application, user *User, provider 
 		return "", "", "", "", err
 	}
 
-	_, originBackend := getOriginFromHost(host)
+	issuer, err := GetOidcIssuerByApplication(host, application)
+	if err != nil {
+		return "", "", "", "", err
+	}
 
 	name := util.GenerateId()
 	jti := util.GetId(application.Owner, name)
@@ -660,7 +663,7 @@ func generateJwtTokenWithOptions(application *Application, user *User, provider 
 		Provider:     provider,
 		SigninMethod: signinMethod,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    originBackend,
+			Issuer:    issuer,
 			Subject:   user.Id,
 			Audience:  []string{application.ClientId},
 			ExpiresAt: jwt.NewNumericDate(expireTime),
@@ -674,7 +677,8 @@ func generateJwtTokenWithOptions(application *Application, user *User, provider 
 		claims.AuthTime = jwt.NewNumericDate(time.Unix(options.AuthTime, 0))
 	}
 
-	if application.IsShared {
+	// a URL client_id is kept as it is, the client checks it
+	if application.IsShared && !IsClientIdMetadataUrl(application.ClientId) {
 		claims.Audience = []string{application.ClientId + "-org-" + user.Owner}
 	}
 

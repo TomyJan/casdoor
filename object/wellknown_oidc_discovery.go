@@ -50,11 +50,12 @@ type OidcDiscovery struct {
 	RequestParameterSupported                  bool     `json:"request_parameter_supported"`
 	RequestObjectSigningAlgValuesSupported     []string `json:"request_object_signing_alg_values_supported"`
 	EndSessionEndpoint                         string   `json:"end_session_endpoint"`
-	BackchannelLogoutSupported                 bool     `json:"backchannel_logout_supported"`                   // OIDC Back-Channel Logout 1.0
-	BackchannelLogoutSessionSupported          bool     `json:"backchannel_logout_session_supported"`           // OIDC Back-Channel Logout 1.0
-	DPoPSigningAlgValuesSupported              []string `json:"dpop_signing_alg_values_supported,omitempty"`    // RFC 9449
-	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"` // RFC 9207
-	ClientIdMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported"`          // draft-ietf-oauth-client-id-metadata-document
+	BackchannelLogoutSupported                 bool     `json:"backchannel_logout_supported"`                     // OIDC Back-Channel Logout 1.0
+	BackchannelLogoutSessionSupported          bool     `json:"backchannel_logout_session_supported"`             // OIDC Back-Channel Logout 1.0
+	DPoPSigningAlgValuesSupported              []string `json:"dpop_signing_alg_values_supported,omitempty"`      // RFC 9449
+	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`   // RFC 9207
+	ClientIdMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported"`            // draft-ietf-oauth-client-id-metadata-document
+	AuthorizationGrantProfilesSupported        []string `json:"authorization_grant_profiles_supported,omitempty"` // draft-ietf-oauth-identity-assertion-authz-grant
 }
 
 var (
@@ -130,21 +131,55 @@ func GetOidcIssuer(host string) string {
 	return originBackend
 }
 
+// GetOrganizationIssuer returns the issuer of an organization that works as its own tenant, e.g. "https://door.casdoor.com/orgs/casbin"
+func GetOrganizationIssuer(host string, organizationName string) string {
+	return fmt.Sprintf("%s/orgs/%s", GetOidcIssuer(host), url.PathEscape(organizationName))
+}
+
+// getOrganizationIssuerOrGlobal returns the issuer of an organization when it has its own, otherwise the global issuer
+func getOrganizationIssuerOrGlobal(host string, organization *Organization) string {
+	if organization.UseOrganizationIssuer {
+		return GetOrganizationIssuer(host, organization.Name)
+	}
+	return GetOidcIssuer(host)
+}
+
+// GetOidcIssuerByApplication returns the `iss` of the tokens of an application: the issuer of its organization when the
+// organization has its own issuer, otherwise the global issuer
+func GetOidcIssuerByApplication(host string, application *Application) (string, error) {
+	if application == nil || application.Organization == "" {
+		return GetOidcIssuer(host), nil
+	}
+
+	organization, err := getOrganization("admin", application.Organization)
+	if err != nil {
+		return "", err
+	}
+	if organization != nil && organization.UseOrganizationIssuer {
+		return GetOrganizationIssuer(host, organization.Name), nil
+	}
+	return GetOidcIssuer(host), nil
+}
+
+// getOrganizationEndpoints scopes the registration endpoint (DCR) and the authorization endpoint (URL client_ids) to an organization
+func getOrganizationEndpoints(registrationEndpoint string, authorizationEndpoint string, organizationName string) (string, string) {
+	registrationEndpoint = fmt.Sprintf("%s?organization=%s", registrationEndpoint, url.QueryEscape(organizationName))
+	// Tells URL client_ids which organization to be added to, as registrationEndpoint does for DCR
+	if organizationName != cimdOrganization && IsClientIdMetadataDocumentSupported(organizationName) {
+		authorizationEndpoint = fmt.Sprintf("%s?organization=%s", authorizationEndpoint, url.QueryEscape(organizationName))
+	}
+	return registrationEndpoint, authorizationEndpoint
+}
+
 func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 	originFrontend, originBackend := getOriginFromHost(host)
 
-	// If application is provided, use application-specific URLs
-	var issuer, jwksUri string
+	// Issuer must match the `iss` claim in JWT tokens so that clients can validate tokens correctly
+	issuer := originBackend
+	jwksUri := fmt.Sprintf("%s/.well-known/jwks", originBackend)
 	if applicationName != "" {
 		// Application-specific endpoints (owner is always "admin")
-		// Issuer must match the `iss` claim in JWT tokens (always originBackend) so that
-		// clients using /.well-known/<app>/openid-configuration can validate tokens correctly.
-		issuer = originBackend
 		jwksUri = fmt.Sprintf("%s/.well-known/%s/jwks", originBackend, applicationName)
-	} else {
-		// Default global issuer and endpoints
-		issuer = originBackend
-		jwksUri = fmt.Sprintf("%s/.well-known/jwks", originBackend)
 	}
 
 	// Default OIDC scopes
@@ -167,12 +202,13 @@ func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 			}
 
 			if application.Organization != "" {
-				registrationEndpoint = fmt.Sprintf("%s?organization=%s", registrationEndpoint, url.QueryEscape(application.Organization))
+				registrationEndpoint, authorizationEndpoint = getOrganizationEndpoints(registrationEndpoint, authorizationEndpoint, application.Organization)
 				cimdOrg = application.Organization
-				// Tells URL client_ids which organization to be added to, as registrationEndpoint does for DCR
-				if cimdOrg != cimdOrganization && IsClientIdMetadataDocumentSupported(cimdOrg) {
-					authorizationEndpoint = fmt.Sprintf("%s?organization=%s", authorizationEndpoint, url.QueryEscape(cimdOrg))
-				}
+			}
+
+			applicationIssuer, err := GetOidcIssuerByApplication(host, application)
+			if err == nil {
+				issuer = applicationIssuer
 			}
 		}
 	}
@@ -195,7 +231,7 @@ func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 		RevocationEndpoint:                         fmt.Sprintf("%s/api/login/oauth/revoke", originBackend),
 		ResponseTypesSupported:                     []string{"code", "token", "id_token", "code token", "code id_token", "token id_token", "code token id_token"},
 		ResponseModesSupported:                     []string{"query", "fragment", "form_post"},
-		GrantTypesSupported:                        []string{"authorization_code", "implicit", "password", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:token-exchange", VerificationCodeGrantType, MobileOneClickGrantType},
+		GrantTypesSupported:                        []string{"authorization_code", "implicit", "password", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:jwt-bearer", "urn:ietf:params:oauth:grant-type:token-exchange", VerificationCodeGrantType, MobileOneClickGrantType},
 		SubjectTypesSupported:                      []string{"public"},
 		IdTokenSigningAlgValuesSupported:           []string{"RS256", "RS512", "ES256", "ES384", "ES512"},
 		ScopesSupported:                            scopes,
@@ -209,9 +245,28 @@ func GetOidcDiscovery(host string, applicationName string) OidcDiscovery {
 		DPoPSigningAlgValuesSupported:              DPoPSigningAlgs,
 		AuthorizationResponseIssParameterSupported: true,
 		ClientIdMetadataDocumentSupported:          IsClientIdMetadataDocumentSupported(cimdOrg),
+		AuthorizationGrantProfilesSupported:        []string{"urn:ietf:params:oauth:grant-profile:id-jag"},
 	}
 
 	return oidcDiscovery
+}
+
+// GetOidcDiscoveryByOrganization returns the discovery document of an organization that has its own issuer, nil when
+// the organization doesn't exist or uses the global issuer
+func GetOidcDiscoveryByOrganization(host string, organizationName string) (*OidcDiscovery, error) {
+	organization, err := getOrganization("admin", organizationName)
+	if err != nil {
+		return nil, err
+	}
+	if organization == nil || !organization.UseOrganizationIssuer {
+		return nil, nil
+	}
+
+	oidcDiscovery := GetOidcDiscovery(host, "")
+	oidcDiscovery.Issuer = GetOrganizationIssuer(host, organization.Name)
+	oidcDiscovery.RegistrationEndpoint, oidcDiscovery.AuthorizationEndpoint = getOrganizationEndpoints(oidcDiscovery.RegistrationEndpoint, oidcDiscovery.AuthorizationEndpoint, organization.Name)
+	oidcDiscovery.ClientIdMetadataDocumentSupported = IsClientIdMetadataDocumentSupported(organization.Name)
+	return &oidcDiscovery, nil
 }
 
 func GetJsonWebKeySet(applicationName string) (jose.JSONWebKeySet, error) {
