@@ -219,13 +219,14 @@ func (idp *GitlabIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error)
 		return nil, err
 	}
 
+	uid := strconv.Itoa(guser.Id)
+	idStr := oauthStableID(uid, "", "", "", "")
 	userInfo := UserInfo{
-		Id:          strconv.Itoa(guser.Id),
-		Username:    guser.Username,
-		DisplayName: guser.Name,
-		AvatarUrl:   guser.AvatarUrl,
-		Email:       guser.Email,
-		// GitLab's "email" is the confirmed primary email
+		Id:            idStr,
+		Username:      oauthUsernamePreferLogin(guser.Username, "", "", "", ""),
+		DisplayName:   displayNameFromNickname("", guser.Name, guser.Username, "", ""),
+		AvatarUrl:     guser.AvatarUrl,
+		Email:         guser.Email,
 		EmailVerified: guser.Email != "",
 	}
 	return &userInfo, nil

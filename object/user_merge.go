@@ -171,6 +171,20 @@ func MergeUser(from *User, into *User) error {
 			return err
 		}
 	}
+	if from.IsDeleted {
+		// A soft-deleted source must release identities now owned by the kept account.
+		columns = []string{"email", "email_verified", "phone", "country_code"}
+		for _, field := range userProviderFields {
+			setUserStringField(from, field, "")
+			columns = append(columns, strings.ToLower(field))
+		}
+		from.Email, from.Phone, from.CountryCode = "", "", ""
+		from.EmailVerified = false
+		_, err = updateUser(from.GetId(), from, columns)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
