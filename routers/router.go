@@ -53,6 +53,7 @@ func InitAPI() {
 	web.Router("/api/get-dashboard-heatmap", &controllers.ApiController{}, "GET:GetDashboardLoginHeatmap")
 	web.Router("/api/logout", &controllers.ApiController{}, "GET,POST:Logout")
 	web.Router("/api/sso-logout", &controllers.ApiController{}, "GET,POST:SsoLogout")
+	web.Router("/api/logout-user", &controllers.ApiController{}, "POST:LogoutUser")
 	web.Router("/api/get-account", &controllers.ApiController{}, "GET:GetAccount")
 	web.Router("/api/userinfo", &controllers.ApiController{}, "GET,POST:GetUserinfo")
 	web.Router("/api/user", &controllers.ApiController{}, "GET:GetUserinfo2")
@@ -369,6 +370,8 @@ func InitAPI() {
 	web.Router("/api/verify-code", &controllers.ApiController{}, "POST:VerifyCode")
 	web.Router("/api/verify-captcha", &controllers.ApiController{}, "POST:VerifyCaptcha")
 	web.Router("/api/reset-email-or-phone", &controllers.ApiController{}, "POST:ResetEmailOrPhone")
+	web.Router("/api/check-user-merge", &controllers.ApiController{}, "GET:CheckUserMerge")
+	web.Router("/api/merge-user", &controllers.ApiController{}, "POST:MergeUser")
 	web.Router("/api/get-captcha", &controllers.ApiController{}, "GET:GetCaptcha")
 	web.Router("/api/get-verifications", &controllers.ApiController{}, "GET:GetVerifications")
 

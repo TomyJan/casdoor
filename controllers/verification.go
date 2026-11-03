@@ -356,6 +356,11 @@ func (c *ApiController) SendVerificationCode() {
 			return
 		}
 
+		if vform.Method == ResetVerification && !isUserDestMergeable(user, object.VerifyTypeEmail, vform.Dest, "") {
+			c.ResponseError(c.T("check:Email already exists"))
+			return
+		}
+
 		if vform.Method == LoginVerification || vform.Method == ForgetVerification {
 			if user != nil && util.GetMaskedEmail(user.Email) == vform.Dest {
 				vform.Dest = user.Email
@@ -483,6 +488,11 @@ func (c *ApiController) SendVerificationCode() {
 				if user = c.getCurrentUser(); user != nil {
 					vform.CountryCode = user.GetCountryCode(vform.CountryCode)
 				}
+			}
+
+			if vform.Method == ResetVerification && !isUserDestMergeable(user, object.VerifyTypePhone, vform.Dest, vform.CountryCode) {
+				c.ResponseError(c.T("check:Phone already exists"))
+				return
 			}
 		} else if vform.Method == MfaAuthVerification {
 			if user == nil {

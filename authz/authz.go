@@ -94,6 +94,8 @@ var defaultApiRules = [][]string{
 	{"*", "*", "POST", "/api/v1/metrics", "*", "*"},
 	{"*", "*", "POST", "/api/v1/logs", "*", "*"},
 	{"*", "*", "POST", "/api/reset-email-or-phone", "*", "*"},
+	{"*", "*", "GET", "/api/check-user-merge", "*", "*"},
+	{"*", "*", "POST", "/api/merge-user", "*", "*"},
 	{"*", "*", "POST", "/api/upload-resource", "*", "*"},
 	{"*", "*", "GET", "/.well-known/openid-configuration", "*", "*"},
 	{"*", "*", "GET", "/.well-known/oauth-authorization-server", "*", "*"},
