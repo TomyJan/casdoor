@@ -42,6 +42,7 @@ import (
 const (
 	UserPropertiesWechatUnionId = "wechatUnionId"
 	UserPropertiesWechatOpenId  = "wechatOpenId"
+	UserPropertiesMergedUsers   = "mergedUsers"
 )
 
 const UserEnforcerId = "built-in/user-enforcer-built-in"
@@ -976,6 +977,11 @@ func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, er
 		user.FaceIds = oldUser.FaceIds
 	}
 
+	// only a merge lists the accounts merged into a user, the applications hand their data over by it
+	if !isAdmin {
+		setUserProperty(user, UserPropertiesMergedUsers, getUserProperty(oldUser, UserPropertiesMergedUsers))
+	}
+
 	if user.Id != oldUser.Id && user.Id == "" {
 		user.Id = oldUser.Id
 	}
@@ -1379,7 +1385,7 @@ func TerminateUserAccess(user *User) error {
 		sessionIds = append(sessionIds, session.SessionId...)
 	}
 
-	// The host is empty, so the issuer falls back to the configured origin
+	// There is no request host here, the logout token and LogoutRequest take the issuer the sign-in was made with
 	sendBackchannelLogoutForTokens(user, tokens, "", "")
 	SendSamlLogout(user.Owner, user.Name, nil, "")
 

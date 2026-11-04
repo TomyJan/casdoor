@@ -73,9 +73,12 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`)
 			from := &User{
 				Owner: org.Name, Name: "a-source", Id: "source-id", Bilibili: "bili-openid", GitHub: "github-id",
 				Email: "source@example.com", EmailVerified: true, Phone: "13800138000", CountryCode: "86",
-				Properties: map[string]string{"oauth_Bilibili_name": "Bili user"},
+				Balance: 12.5, Properties: map[string]string{"oauth_Bilibili_name": "Bili user", "mergedUsers": "first,a-source,z-kept"},
 			}
-			into := &User{Owner: org.Name, Name: "z-kept", Id: "kept-id"}
+			into := &User{
+				Owner: org.Name, Name: "z-kept", Id: "kept-id", Balance: 7.25,
+				Properties: map[string]string{"mergedUsers": "existing,first"},
+			}
 			if scenario.alreadyLinked {
 				into.Bilibili, into.GitHub = from.Bilibili, from.GitHub
 				into.Email, into.Phone, into.CountryCode = from.Email, from.Phone, from.CountryCode
@@ -85,6 +88,19 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`)
 			}
 			if err := MergeUser(from, into); err != nil {
 				t.Fatal(err)
+			}
+			retained, err := getUser(org.Name, "z-kept")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if retained == nil {
+				t.Fatal("the retained account must remain")
+			}
+			if retained.Balance != 19.75 {
+				t.Errorf("retained balance = %v, want 19.75", retained.Balance)
+			}
+			if merged := getUserProperty(retained, UserPropertiesMergedUsers); merged != "existing,first,a-source" {
+				t.Errorf("merged accounts = %q, want existing,first,a-source", merged)
 			}
 			for _, identity := range []struct{ field, value string }{
 				{"bilibili", "bili-openid"}, {"github", "github-id"}, {"email", "source@example.com"}, {"phone", "13800138000"},
@@ -109,6 +125,9 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`)
 				}
 				if deleted.Bilibili != "" || deleted.GitHub != "" || deleted.Email != "" || deleted.EmailVerified || deleted.Phone != "" || deleted.CountryCode != "" {
 					t.Fatal("the deleted source must release the transferred login identities")
+				}
+				if deleted.Balance != 0 {
+					t.Errorf("deleted source balance = %v, want 0 after transfer", deleted.Balance)
 				}
 			} else if deleted != nil {
 				t.Fatal("hard deletion must remove the source row")
