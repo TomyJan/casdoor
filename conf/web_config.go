@@ -16,11 +16,11 @@ package conf
 
 import "sync/atomic"
 
-// hideCloudPromotion mirrors the global setting of the same name, which lives in the database this package cannot read
-var hideCloudPromotion atomic.Bool
+// Keep promotion hidden until the database setting explicitly enables it.
+var showCloudPromotion atomic.Bool
 
 func SetHideCloudPromotion(hide bool) {
-	hideCloudPromotion.Store(hide)
+	showCloudPromotion.Store(!hide)
 }
 
 type WebConfig struct {
@@ -64,7 +64,7 @@ func GetWebConfig() *WebConfig {
 		config.MarketplaceUrl = GetConfigString("marketplaceUrl")
 	}
 
-	config.ShowCloudPromotion = !hideCloudPromotion.Load()
+	config.ShowCloudPromotion = showCloudPromotion.Load()
 
 	return config
 }

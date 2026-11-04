@@ -40,8 +40,8 @@ export let MaxItemsForFlatMenu = 7;
 export let ThemeShowcase = false;
 export let MarketplaceUrl = "https://cdn.jsdelivr.net/gh/casdoor/casdoor-integrations@dist";
 
-// the links to Casdoor Cloud in the console, which a global admin can turn off in the global settings
-export let ShowCloudPromotion = true;
+// Keep cloud promotion hidden unless a global admin explicitly enables it.
+export let ShowCloudPromotion = false;
 
 // setConfig updates the frontend configuration from backend
 export function setConfig(config: Record<string, any>) {

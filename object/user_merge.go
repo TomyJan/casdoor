@@ -199,8 +199,28 @@ func MergeUser(from *User, into *User) error {
 		return err
 	}
 
-	_, err = UpdateUser(into.GetId(), into, columns, true)
-	return err
+	if len(columns) > 0 {
+		_, err = UpdateUser(into.GetId(), into, columns, true)
+		if err != nil {
+			return err
+		}
+	}
+	if from.IsDeleted {
+		// A soft-deleted source must release identities and balance now owned by the kept account.
+		columns = []string{"email", "email_verified", "phone", "country_code", "balance"}
+		for _, field := range userProviderFields {
+			setUserStringField(from, field, "")
+			columns = append(columns, strings.ToLower(field))
+		}
+		from.Email, from.Phone, from.CountryCode = "", "", ""
+		from.EmailVerified = false
+		from.Balance = 0
+		_, err = updateUser(from.GetId(), from, columns)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ormerColumnName(field string) string {

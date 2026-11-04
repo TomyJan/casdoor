@@ -170,10 +170,11 @@ func (idp *AdfsIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, error) {
 		return nil, errors.New("the ADFS id_token has no sid claim")
 	}
 
+	idStr := oauthStableID(sid, "", "", "", upn)
 	userinfo := &UserInfo{
-		Id:          sid,
-		Username:    name,
-		DisplayName: name,
+		Id:          idStr,
+		Username:    oauthUsernamePreferLogin(name, sid, "", "", upn),
+		DisplayName: displayNameFromNickname("", name, name, upn, idStr),
 		Email:       upn,
 		// the UPN is the directory account itself
 		EmailVerified: upn != "",

@@ -130,14 +130,10 @@ function getProviderSubTypeOptions(type: string) {
     return [{id: "Site", name: "Site"}, {id: "Url", name: "Url"}];
   } else if (type === "MCP Scan") {
     return [{id: "Intranet Scan", name: "Intranet Scan"}];
-  } else if (type === "WeCom") {
+  } else if (type === "WeCom" || type === "Infoflow") {
     return [
       {id: "Internal", name: i18next.t("provider:Internal")},
       {id: "Third-party", name: i18next.t("provider:Third-party")},
-    ];
-  } else if (type === "Infoflow") {
-    return [
-      {id: "Internal", name: i18next.t("provider:Internal")},
     ];
   } else if (type === "WeChat") {
     return [
